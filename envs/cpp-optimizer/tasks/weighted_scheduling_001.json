@@ -1,0 +1,18 @@
+{
+  "id": "weighted_scheduling_001",
+  "prompt": "Solve the Weighted Job Scheduling problem described in the attached README. Write your final C++17 submission to `solution.cpp` in the current working directory. The program reads jobs from stdin (start, end, weight) and must print the maximum total weight achievable by a set of mutually non-overlapping jobs.",
+  "context": {
+    "problem": "Given n jobs each with [start, end) and a weight, select a subset of pairwise non-overlapping jobs (touching endpoints do not count as overlapping) maximizing total weight. Input: n followed by n lines of 's e w'. Output: a single integer, the maximum achievable weight.",
+    "limits": {
+      "language": "C++17",
+      "compile": "g++ -std=c++17 -O2",
+      "max_n": 20000,
+      "per_case_time_seconds": 5
+    },
+    "final_file": "solution.cpp"
+  },
+  "constraints": {
+    "expected_files": ["solution.cpp"]
+  },
+  "timeout_seconds": 1200
+}

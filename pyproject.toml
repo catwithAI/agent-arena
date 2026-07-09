@@ -1,0 +1,42 @@
+[project]
+name = "agent-lane"
+version = "0.1.0"
+description = "Open benchmark harness for comparing coding agents (Claude Code, Codex, and any custom agent) on the same tasks"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.5",
+    "httpx>=0.27",
+    "aiosqlite>=0.20",
+    "pyyaml>=6.0",
+    "mcp>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "python-multipart>=0.0.18",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend", "lane"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.egg-info/
+
+# local config with real endpoints / API keys — never commit
+agentlane.yaml
+.env
+
+# runtime data
+data/
+logs/
+*.db
+*.sqlite3
+
+# node / web
+web/node_modules/
+web/dist/
+web/.vite/
+
+.DS_Store

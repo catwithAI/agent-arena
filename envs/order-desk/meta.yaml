@@ -1,0 +1,25 @@
+name: order-desk
+type: skill
+category: baseline
+test_focus: >
+  Basic tool use and constraint compliance: complete a book order under
+  budget/date constraints, with accurate order fields and an efficient
+  number of tool calls.
+description: >
+  A small order-desk environment. The agent must search a mock book catalog
+  and place an order that satisfies the user's constraints.
+pass_threshold: 60
+
+entrypoints:
+  mcp:
+    enabled: true
+    transport: stdio
+    command: ["uv", "run", "--project", ".", "python", "envs/order-desk/mcp_server.py"]
+
+dimensions:
+  - name: task_completion
+    weight: 60
+    description: Whether a confirmed order was placed.
+  - name: constraint_compliance
+    weight: 40
+    description: Whether the order respects the budget constraint in the task.

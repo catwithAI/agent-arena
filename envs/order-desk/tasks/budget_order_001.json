@@ -1,0 +1,9 @@
+{
+  "id": "budget_order_001",
+  "prompt": "Order one copy of a book about algorithms or system design, keeping the total under $60. Use the catalog_search and place_order tools to find and confirm a suitable book.",
+  "context": {},
+  "constraints": {
+    "max_total_price": 60
+  },
+  "timeout_seconds": 600
+}

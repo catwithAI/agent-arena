@@ -1,0 +1,49 @@
+# agent-lane local config template.
+# Copy to agentlane.yaml (already gitignored) and fill in real values.
+# Environment variables override this file — see the comment on each field.
+
+lane:
+  # Where attempt traces / final_state / per-attempt sqlite DBs live.
+  # env: LANE_DATA_PATH
+  data_path: "./data"
+
+  # Repo root for environment definitions.
+  # env: LANE_ENVS_PATH
+  envs_path: "./envs"
+
+  # Address the agent-facing MCP tool server calls back to. The agent
+  # process (claude/codex CLI subprocess) must be able to reach this URL.
+  # Same-machine setups can leave this as loopback; if the agent runs in a
+  # different network namespace (e.g. a container), point it at whatever
+  # address reaches this host from there.
+  # env: LANE_PUBLIC_BASE_URL
+  public_base_url: "http://127.0.0.1:8100"
+
+# Third-party model providers usable by the claude-code / codex adapters.
+# Referenced from a run's `model` field as "<provider>/<model>", e.g.
+# "openrouter/glm-5". API keys are read from the named environment variable
+# at request time — never put a key literal in this file.
+#
+# model_providers:
+#   openrouter:
+#     kind: openai-chat        # anthropic | openai-chat | openai-responses
+#     base_url: "https://openrouter.ai/api/v1"
+#     api_key_env: "OPENROUTER_API_KEY"
+#     wire_api: "chat"         # codex only; ignored for anthropic-kind providers
+
+# Suggested model strings for the UI's model dropdown (free text still works).
+# model_suggestions:
+#   - "sonnet"
+#   - "gpt-5"
+#   - "openrouter/glm-5"
+
+# Any other CLI-based agent, keyed by the agent name used in `POST /runs`.
+# This is how you bring your own agent to agent-lane without writing a
+# Python adapter — see backend/adapters/custom_cli.py for the full field
+# reference.
+#
+# custom_agents:
+#   my-agent:
+#     command: ["my-agent-cli", "--prompt-file", "{prompt_file}"]
+#     prompt_mode: file        # stdin | file | arg
+#     output_format: text      # text | jsonl

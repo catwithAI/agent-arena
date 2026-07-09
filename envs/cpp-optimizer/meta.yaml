@@ -1,0 +1,21 @@
+name: cpp-optimizer
+type: coding
+category: coding
+test_focus: >
+  Correctness and efficiency on a batch-graded optimization problem: the
+  agent writes a C++17 program, the scorer compiles it and runs it against a
+  fixed set of hidden test cases.
+description: >
+  A self-contained interval-scheduling optimization task. No env tools are
+  required — the agent writes its final submission into the attempt
+  workspace and the scorer takes it from there.
+pass_threshold: 60
+
+entrypoints:
+  mcp:
+    enabled: false
+
+dimensions:
+  - name: batch_score
+    weight: 100
+    description: Normalized 0-100 score over the fixed hidden test cases.
