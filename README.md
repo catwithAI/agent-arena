@@ -1,5 +1,7 @@
 # agent-lane
 
+[中文文档](README-cn.md)
+
 An open benchmark harness for comparing coding agents on the same tasks —
 same prompt, same tools, same scoring. Ships with reference adapters for
 **Claude Code** and **Codex** as baselines, plus an extension point for
