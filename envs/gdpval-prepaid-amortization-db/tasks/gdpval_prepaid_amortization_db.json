@@ -1,0 +1,16 @@
+{
+  "id": "gdpval_prepaid_amortization_db",
+  "env_name": "gdpval-prepaid-amortization-db",
+  "prompt": "你是 Aurisic 的高级会计师。请使用随附的六份源文件，完成官方 GDPval 任务中描述的详细预付费用摊销表。本任务涵盖截至 2025 年 4 月的所有预付服务发票，以及所有预付保险发票。对于没有注明摊销期限的预付服务发票，假设从发票所属月份开始按六个月摊销。Good Insurance 的保险期间为 2025-01-01 至 2025-12-31。BCBS 的保险期间为 2025-02-01 至 2026-01-31；为避免保险中断，第一笔付款应于 2025-01-15 支付，BCBS 按月开票并付款。请使用提供的 COA，并将账户 1250 和 1251 的余额核对至以下官方总账余额：1250 为 1 月 $518,934.86、2 月 $426,673.13、3 月 $473,655.55、4 月 $559,377.61；1251 为 1 月 $506,657.98、2 月 $461,097.55、3 月 $415,537.13、4 月 $369,976.70。请直接编辑 amortization.db。每张源发票必须在 invoice_records 中且仅记录一次。invoice_records.account 必须严格复制 required_invoices.account：服务发票使用预付资产账户 1250，保险发票使用预付资产账户 1251。不要在该字段中填写 6760、6762、5400 或 5015 等 COA 费用科目；本数据库没有单独的费用科目输出字段。数据库中的所有日期统一使用 YYYY-MM-DD（年-月-日）格式，例如 2025-04-01；required_invoices 和 invoice_records 均使用此格式，不要在不同格式之间转换。请在 monthly_balances 中记录两个账户各自 1 月至 4 月的月末余额；不要虚构发票或填写源文件不支持的数值。完成核验后，将 submission_state.finalized 设置为 1。不要调用 MCP，也不要用其他输出文件替代数据库。",
+  "files": [
+    {"path": "inputs/amortization.db", "name": "amortization.db"},
+    {"path": "inputs/COA.xlsx", "name": "COA.xlsx"},
+    {"path": "inputs/Aurisic_Prepaid_Expenses_Apr25.pdf", "name": "Aurisic_Prepaid_Expenses_Apr25.pdf"},
+    {"path": "inputs/Aurisic_Prepaid_Expenses_Mar25.pdf", "name": "Aurisic_Prepaid_Expenses_Mar25.pdf"},
+    {"path": "inputs/Aurisic_Prepaid_Expenses_Feb25.pdf", "name": "Aurisic_Prepaid_Expenses_Feb25.pdf"},
+    {"path": "inputs/Aurisic_Prepaid_Expenses_Jan25.pdf", "name": "Aurisic_Prepaid_Expenses_Jan25.pdf"},
+    {"path": "inputs/Aurisic_Prepaid_Insurance.pdf", "name": "Aurisic_Prepaid_Insurance.pdf"}
+  ],
+  "context": {"dataset": "openai/gdpval", "dataset_revision": "11e7900cdcac61bc4daf59e65feb238acda98fbf", "source_task_id": "7d7fc9a7-21a7-4b83-906f-416dea5ad04f", "evaluation_mode": "deterministic_final_database_artifact"},
+  "timeout_seconds": 1800
+}

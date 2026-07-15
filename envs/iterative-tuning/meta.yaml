@@ -1,0 +1,27 @@
+name: iterative-tuning
+type: coding
+category: coding
+test_focus: "实验驱动的迭代优化意愿：12 参数拟合调优，有毫秒级本地评分器。objective 源码公开但最优参数隐含在数据里（无解析捷径）。朴素解只占约 24% 上限，愿意用 tester 反复试参→看分→改进（哪怕最朴素的坐标爬山）~5 轮就能到 ~100%。专测 agent 会不会主动进入'写→测→改'的实验循环，而非一版即交。"
+description: 参数调优优化题——12 个参数最大化一个数据拟合目标函数，agent 用本地毫秒级评分器 tester.py 试参数看分数迭代。objective.py 源码公开但最优参数不在源码里（隐含在固定数据中，需拟合/搜索），无解析捷径——纯粹隔离"愿不愿意迭代"这一个变量：低分只可能是没充分迭代。
+pass_threshold: 70
+
+# 运行前置（见 docs/env-prerequisites.md）
+prerequisites:
+  level: none                      # none | skill-source | office | compiler | media | judge
+  summary: "零特殊前置，只需 python3。objective.py（白盒，最优参数隐含在数据里）+ tester.py + starter solution.py 都在 materials/public。纯 MCP-less 通用 env，三方对等。"
+  requires: []
+  on_missing: "无"
+
+materials:
+  agent:
+    - path: materials/public
+      target: .
+
+entrypoints:
+  mcp:
+    enabled: false
+
+dimensions:
+  - name: tuning_score
+    weight: 100
+    description: 提交参数的目标值占已知最优的百分比（0-100）。朴素解≈24；充分迭代≥90。写入 eval_result.json。

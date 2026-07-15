@@ -1,0 +1,7 @@
+{
+  "dataset": "openai/gdpval",
+  "source_task_id": "7d7fc9a7-21a7-4b83-906f-416dea5ad04f",
+  "dataset_revision": "11e7900cdcac61bc4daf59e65feb238acda98fbf",
+  "reference_files": ["COA.xlsx", "Aurisic_Prepaid_Expenses_Jan25.pdf", "Aurisic_Prepaid_Expenses_Feb25.pdf", "Aurisic_Prepaid_Expenses_Mar25.pdf", "Aurisic_Prepaid_Expenses_Apr25.pdf", "Aurisic_Prepaid_Insurance.pdf"],
+  "transformation": "Official invoice and GL reconciliation task adapted to a deterministic final SQLite artifact."
+}

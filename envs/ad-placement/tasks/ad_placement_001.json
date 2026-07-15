@@ -1,0 +1,21 @@
+{
+  "id": "ad_placement_001",
+  "env_name": "ad-placement",
+  "prompt": "Solve the AtCoder Ad Placement Optimization problem. Write your final C++17 submission to `solution.cpp` in the current working directory. The program must read one case from stdin and print one rectangle per company to stdout. You may create helper files while working, but final judging will compile and run `solution.cpp` or use `Makefile` if you provide one that builds an executable named `solution`.",
+  "context": {
+    "problem": "Place non-overlapping axis-aligned integer rectangles inside a 10000 x 10000 square. Rectangle i must have 0 <= a_i < c_i <= 10000 and 0 <= b_i < d_i <= 10000, should contain point (x_i + 0.5, y_i + 0.5), and should have area close to requested r_i. The input contains n followed by n rows of x_i y_i r_i. Output n rows a_i b_i c_i d_i.",
+    "scoring": "For each company, p_i = 0 if its point is not contained. Otherwise p_i = 1 - (1 - min(r_i, s_i) / max(r_i, s_i))^2 where s_i is the rectangle area. Per-case score is round(1e9 * sum(p_i) / n). Final score is the sum over fixed judge cases.",
+    "limits": {
+      "language": "C++17",
+      "compile": "g++ -std=c++17 -O2",
+      "per_case_time_seconds": 5
+    },
+    "final_file": "solution.cpp"
+  },
+  "constraints": {
+    "expected_files": ["solution.cpp"],
+    "hidden_cases": 50,
+    "do_not_assume_case_files_are_visible": true
+  },
+  "timeout_seconds": 1800
+}

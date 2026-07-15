@@ -1,0 +1,35 @@
+name: ppt-visual-repair
+type: skill
+category: document-design-taste
+test_focus: "PPT 可用性 + 视觉审美双轴评测：先检查无遮挡、内容/对象/页面完整性，再评估视觉层级、构图、间距、排版、一致性和整体人类偏好。"
+description: PPT usability and human-taste alignment — enforce objective presentation usability, then judge mature human design preferences.
+pass_threshold: 70
+
+# 运行前置（见 docs/env-prerequisites.md）
+prerequisites:
+  level: office                      # none | skill-source | office | compiler | media | judge
+  summary: "三重依赖（最重）：LibreOffice/soffice（pptx→pdf 渲染）+ PyMuPDF/fitz（pdf→png）+ 多模态 LLM Judge（Anthropic API，占评分 80%）。参考 pptx 自带。"
+  requires:
+    - "LibreOffice/soffice（office_render）"
+    - "PyMuPDF/fitz（pdf→png）"
+    - "ANTHROPIC_API_KEY 环境变量（或 agentlane.yaml 配置的等效 judge key）"
+    - "支持图片检查的 llm_judge.model，默认使用 Anthropic 的当前 Claude 模型"
+  on_missing: "缺 soffice → office_render=0 且 previews 为 None 导致 judge 被跳过；缺 Judge 配置 → llm_visual_judge=0（占 80%）"
+
+
+entrypoints:
+  mcp:
+    enabled: true
+    transport: stdio
+    command: ["uv", "run", "--project", ".", "python", "envs/ppt-visual-repair/mcp_server.py"]
+
+dimensions:
+  - name: artifact_contract
+    weight: 10
+    description: 是否产出 polished.pptx，且 PPTX 是有效 OOXML；这只是提交门槛，不代表审美得分。
+  - name: office_render
+    weight: 10
+    description: reference/draft/candidate 是否可经 LibreOffice 渲染成可审查 PNG 预览。
+  - name: llm_visual_judge
+    weight: 80
+    description: 多模态 LLM judge 分别评估可用性与审美；candidate 必须优于 draft，并以 reference 校准专业完成度。
