@@ -76,6 +76,13 @@ CREATE TABLE IF NOT EXISTS attempts (
     execution_locus TEXT,
     permission_mode TEXT,
     workspace_root TEXT,
+    -- Security axis (backend/security/): alongside score_total, never merged
+    -- into it. Per-event detail lives in security_events.jsonl; only the
+    -- summary lives here.
+    security_event_count INTEGER NOT NULL DEFAULT 0,
+    security_max_severity TEXT,
+    security_hitl_json TEXT NOT NULL DEFAULT '{}',
+    security_reaction TEXT,
     -- Wire observability (backend/wire/) summary columns (design §18): only
     -- summary/index data lives here, call/hop/payload evidence stays in the
     -- per-attempt wire.jsonl + wire-manifest.json, never the main DB.

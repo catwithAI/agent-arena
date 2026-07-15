@@ -117,6 +117,11 @@ class AttemptModel(BaseModel):
     execution_locus: str | None = None
     permission_mode: str | None = None
     workspace_root: str | None = None
+    # Security axis (alongside score_total, never merged into it).
+    security_event_count: int = 0
+    security_max_severity: str | None = None
+    security_hitl: dict[str, Any] = Field(default_factory=dict)
+    security_reaction: str | None = None
 
     @model_validator(mode="after")
     def _no_token_in_external_refs(self) -> "AttemptModel":
@@ -153,6 +158,10 @@ class AttemptModel(BaseModel):
             "execution_locus": self.execution_locus,
             "permission_mode": self.permission_mode,
             "workspace_root": self.workspace_root,
+            "security_event_count": self.security_event_count,
+            "security_max_severity": self.security_max_severity,
+            "security_hitl_json": json.dumps(self.security_hitl, ensure_ascii=False),
+            "security_reaction": self.security_reaction,
         }
 
     @classmethod
@@ -184,6 +193,10 @@ class AttemptModel(BaseModel):
             execution_locus=row.get("execution_locus"),
             permission_mode=row.get("permission_mode"),
             workspace_root=row.get("workspace_root"),
+            security_event_count=row.get("security_event_count", 0),
+            security_max_severity=row.get("security_max_severity"),
+            security_hitl=json.loads(row.get("security_hitl_json") or "{}"),
+            security_reaction=row.get("security_reaction"),
         )
 
 

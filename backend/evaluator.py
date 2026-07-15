@@ -28,6 +28,9 @@ class EvaluationOutcome:
     pass_threshold: int
     scores: list[dict[str, Any]]
     passed: bool
+    # Security axis: reported alongside score_total, never merged into it (so a
+    # "dangerous shortcut got a high score" pattern can't be hidden).
+    security: dict[str, Any] | None = None
 
 
 def load_trace(data_path: Path, attempt_id: str) -> list[dict[str, Any]]:
@@ -113,6 +116,60 @@ def _aggregate_total(scores: list[dict[str, Any]], weights: dict[str, int]) -> i
     return 0
 
 
+def _write_security_events(
+    data_path: Path, attempt_id: str, events: list[dict[str, Any]]
+) -> None:
+    p = data_path / "attempts" / attempt_id / "security_events.jsonl"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("w", encoding="utf-8") as fp:
+        for e in events:
+            fp.write(json.dumps(e, ensure_ascii=False, default=str) + "\n")
+
+
+def run_security_scan(
+    *,
+    attempt_id: str,
+    env: Any,
+    data_path: Path,
+    trace: list[dict[str, Any]],
+    security_meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Offline security scan: never changes agent execution, only reads what's
+    already on disk.
+
+    `security_meta` (the adapter's execution-context snapshot) is optional:
+    when missing, locus is recorded as unknown and workspace_root falls back
+    to the attempt directory. `danger_tools` comes from the env's meta.yaml.
+    Returns the summary dict; per-event detail is written to
+    security_events.jsonl.
+    """
+    # Deferred import: security is an optional subsystem and must not be able
+    # to break the scoring critical path if it's missing.
+    from .security import SecurityContext, scan
+
+    meta = security_meta or {}
+    attempt_dir = str((data_path / "attempts" / attempt_id).resolve())
+    env_meta: dict[str, Any] = getattr(env, "meta", {}) or {}
+    danger_tools = env_meta.get("danger_tools", {}) or {}
+
+    ctx = SecurityContext(
+        agent_name=meta.get("agent_name", ""),
+        execution_locus=meta.get("execution_locus", "unknown"),
+        workspace_root=meta.get("workspace_root") or attempt_dir,
+        danger_tools=danger_tools,
+    )
+    result = scan(
+        trace=trace,
+        events=load_events(data_path, attempt_id),
+        thinking=load_thinking(data_path, attempt_id),
+        ctx=ctx,
+    )
+    _write_security_events(
+        data_path, attempt_id, [e.to_dict() for e in result.events]
+    )
+    return result.summary.to_dict()
+
+
 def evaluate(
     *,
     attempt_id: str,
@@ -120,9 +177,12 @@ def evaluate(
     env: Any,
     data_path: Path,
     scorer: Callable[..., list[dict[str, Any]]],
+    security_meta: dict[str, Any] | None = None,
 ) -> EvaluationOutcome:
     """Run one evaluation. If the scorer raises, the exception propagates —
-    the runner catches it and sets a `scoring_failed` status."""
+    the runner catches it and sets a `scoring_failed` status. The security
+    scan is independent of the scorer: a scan failure never affects the
+    task score."""
     trace = load_trace(data_path, attempt_id)
     final_state = load_final_state(data_path, attempt_id)
     db_path = env_db_path(data_path, attempt_id)
@@ -138,11 +198,26 @@ def evaluate(
     pass_threshold, weights = _extract_meta(env)
     score_total = _aggregate_total(raw_scores, weights)
 
+    security: dict[str, Any] | None = None
+    try:
+        security = run_security_scan(
+            attempt_id=attempt_id,
+            env=env,
+            data_path=data_path,
+            trace=trace,
+            security_meta=security_meta,
+        )
+    except Exception:  # security axis must never break task scoring
+        logger.exception(
+            "security scan failed for attempt=%s (task score unaffected)", attempt_id
+        )
+
     return EvaluationOutcome(
         score_total=score_total,
         pass_threshold=pass_threshold,
         scores=raw_scores,
         passed=score_total >= pass_threshold,
+        security=security,
     )
 
 
@@ -160,4 +235,26 @@ def write_scores_sync(db_path: Path, attempt_id: str, scores: list[dict[str, Any
 def write_attempt_score_sync(db_path: Path, attempt_id: str, score_total: int) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.execute("UPDATE attempts SET score_total=? WHERE id=?", (score_total, attempt_id))
+        conn.commit()
+
+
+def write_security_summary_sync(
+    db_path: Path, attempt_id: str, security: dict[str, Any] | None
+) -> None:
+    """Writes the security summary into the attempts row's security_* columns.
+    Independent of score_total."""
+    if not security:
+        return
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE attempts SET security_event_count=?, security_max_severity=?, "
+            "security_hitl_json=?, security_reaction=? WHERE id=?",
+            (
+                int(security.get("event_count", 0)),
+                security.get("max_severity"),
+                json.dumps(security.get("hitl", {}), ensure_ascii=False),
+                security.get("reaction"),
+                attempt_id,
+            ),
+        )
         conn.commit()

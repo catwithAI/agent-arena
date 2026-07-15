@@ -199,7 +199,8 @@ def _get_run_sync(db_path: Path, run_id: str) -> dict[str, Any] | None:
             "SELECT id, agent_name, model, status, score_total, event_count,"
             " thinking_count, tool_call_count, token_usage_json, cost_estimate,"
             " duration_ms, started_at, ended_at, external_refs_json,"
-            " error_code, error_message, execution_locus"
+            " error_code, error_message, execution_locus,"
+            " security_event_count, security_max_severity"
             " FROM attempts WHERE run_id=? ORDER BY created_at",
             (run_id,),
         ).fetchall()
@@ -222,7 +223,9 @@ def _get_attempt_detail_sync(db_path: Path, attempt_id: str) -> dict[str, Any] |
             " external_refs_json, event_count, last_event_at, thinking_count,"
             " tool_call_count, token_usage_json, cost_estimate, duration_ms,"
             " score_total, error_code, error_message, started_at, ended_at,"
-            " created_at, execution_locus, permission_mode, workspace_root"
+            " created_at, execution_locus, permission_mode, workspace_root,"
+            " security_event_count, security_max_severity, security_hitl_json,"
+            " security_reaction"
             " FROM attempts WHERE id=?",
             (attempt_id,),
         ).fetchone()
@@ -240,6 +243,13 @@ def _get_attempt_detail_sync(db_path: Path, attempt_id: str) -> dict[str, Any] |
         "execution_locus": detail.pop("execution_locus", None),
         "permission_mode": detail.pop("permission_mode", None),
         "workspace_root": detail.pop("workspace_root", None),
+    }
+    # Security axis: returned alongside score_total, never merged into it.
+    detail["security"] = {
+        "event_count": detail.pop("security_event_count", 0) or 0,
+        "max_severity": detail.pop("security_max_severity", None),
+        "hitl": json.loads(detail.pop("security_hitl_json", None) or "{}"),
+        "reaction": detail.pop("security_reaction", None),
     }
     return detail
 
@@ -644,6 +654,16 @@ def build_router() -> APIRouter:
         tool_calls = _read_jsonl(attempt_dir / "trace.jsonl")
         events = _read_jsonl(attempt_dir / "events.jsonl")
         final_state = _read_final_state(attempt_dir / "final_state.json")
+        # Category breakdown from the per-event detail file (DB only stores the
+        # summary columns).
+        sec_events = _read_jsonl(attempt_dir / "security_events.jsonl")
+        by_category: dict[str, int] = {}
+        for e in sec_events:
+            if e.get("phase") == "executed":
+                cat = e.get("category", "?")
+                by_category[cat] = by_category.get(cat, 0) + 1
+        if isinstance(detail.get("security"), dict):
+            detail["security"]["by_category"] = by_category
         return {**detail, "tool_calls": tool_calls, "events": events, "final_state": final_state}
 
     @router.get("/runs/{run_id}/attempts/{attempt_id}/thinking")
@@ -660,6 +680,18 @@ def build_router() -> APIRouter:
     async def get_attempt_events(run_id: str, attempt_id: str) -> list[dict[str, Any]]:
         state = runtime_state.get()
         return _read_jsonl(state.data_path / "attempts" / attempt_id / "events.jsonl")
+
+    @router.get("/runs/{run_id}/attempts/{attempt_id}/security_events")
+    async def get_attempt_security_events(
+        run_id: str, attempt_id: str
+    ) -> list[dict[str, Any]]:
+        """Per-event security detail: category/severity/target/locus/
+        hitl_status/rule_id/source_ref, traceable back to a specific trace
+        line."""
+        state = runtime_state.get()
+        return _read_jsonl(
+            state.data_path / "attempts" / attempt_id / "security_events.jsonl"
+        )
 
     @router.post("/runs/{run_id}/stop")
     async def stop_run(run_id: str) -> dict[str, Any]:
