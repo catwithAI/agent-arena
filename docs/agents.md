@@ -43,6 +43,37 @@ codex exec --json --skip-git-repo-check --ephemeral --ignore-rules \
   Responses API (`wire_api: responses`) — Codex no longer supports the
   legacy `chat` wire protocol for custom providers.
 
+## Built-in (optional): Claude Code over SSH
+
+`backend/adapters/ssh_claude_code.py` runs the same `claude -p ... --output-format
+stream-json` flow as the local Claude Code adapter, but on a remote machine
+reached via `ssh`/`scp` instead of a local subprocess — useful when the agent
+needs to run in a different network/filesystem context than this backend
+(e.g. a dedicated worker host).
+
+It is disabled by default and only registers as the `"ssh-claude-code"` agent
+once `ssh_claude_code.ssh_host` is set in `agentlane.yaml` (or via
+`LANE_SSH_CLAUDE_HOST` / `LANE_SSH_CLAUDE_USER` / `LANE_SSH_CLAUDE_PASSWORD`):
+
+```yaml
+ssh_claude_code:
+  ssh_host: "10.0.0.5"
+  ssh_user: "ai"
+  ssh_password: "..."   # prefer LANE_SSH_CLAUDE_PASSWORD instead of committing this
+  max_budget_usd: 5.0
+```
+
+- The prompt and MCP config are written to local files and uploaded via SCP
+  rather than interpolated into the SSH command line, so a task prompt
+  containing quotes/newlines/backticks can never be interpreted as shell
+  syntax on the remote end.
+- The remote MCP server is expected to run from a fixed venv path
+  (`/tmp/lane-mcp-venv/bin/python`) that must be provisioned on the remote
+  host ahead of time; `envs/<env>/mcp_server.py` is copied there per attempt.
+- Wire observability does not apply: the remote CLI has no local
+  spool/injection channel, so `wire_capture_capabilities` declares every
+  field unsupported.
+
 ## Bringing your own agent
 
 Two ways in, from least to most control:

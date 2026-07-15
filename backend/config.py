@@ -16,6 +16,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field
 
+from pydantic import SecretStr
+
 from .adapters.custom_cli import JsonlFieldMap
 from .model_providers import ModelProviderSection
 
@@ -34,6 +36,19 @@ class CustomAgentSection(BaseModel):
     env: dict[str, str] = Field(default_factory=dict)
     jsonl_fields: JsonlFieldMap = Field(default_factory=JsonlFieldMap)
     mcp_config_flag: str | None = None
+
+
+class SshClaudeCodeSection(BaseModel):
+    """Optional: run Claude Code on a remote machine over SSH instead of a
+    local subprocess (see backend/adapters/ssh_claude_code.py). Disabled
+    unless `ssh_host` is set — most setups just use the local `claude-code`
+    adapter. env: LANE_SSH_CLAUDE_HOST / LANE_SSH_CLAUDE_USER /
+    LANE_SSH_CLAUDE_PASSWORD."""
+
+    ssh_host: str | None = None
+    ssh_user: str = "root"
+    ssh_password: SecretStr | None = None
+    max_budget_usd: float = 5.0
 
 
 class LaneSection(BaseModel):
@@ -77,6 +92,10 @@ class Settings(BaseModel):
     # /runs`. This is how third parties bring their own agent to agent-lane
     # without writing a Python adapter.
     custom_agents: dict[str, CustomAgentSection] = Field(default_factory=dict)
+    # Optional: Claude Code over SSH on a remote machine, registered as the
+    # "ssh-claude-code" agent when ssh_host is set (see build_adapter in
+    # backend/run_dispatch.py).
+    ssh_claude_code: SshClaudeCodeSection = Field(default_factory=SshClaudeCodeSection)
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -102,6 +121,16 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     if v := os.environ.get("LANE_WIRE_CAPTURE_MAX_POLICY"):
         lane["wire_capture_max_policy"] = v
     data["lane"] = lane
+
+    ssh_claude = dict(data.get("ssh_claude_code") or {})
+    if v := os.environ.get("LANE_SSH_CLAUDE_HOST"):
+        ssh_claude["ssh_host"] = v
+    if v := os.environ.get("LANE_SSH_CLAUDE_USER"):
+        ssh_claude["ssh_user"] = v
+    if v := os.environ.get("LANE_SSH_CLAUDE_PASSWORD"):
+        ssh_claude["ssh_password"] = v
+    if ssh_claude:
+        data["ssh_claude_code"] = ssh_claude
     return data
 
 
@@ -124,5 +153,6 @@ def _log_settings(settings: Settings) -> None:
         },
         # only provider names and kind, never base_url / api_key_env target
         "model_providers": {name: p.kind for name, p in settings.model_providers.items()},
+        "ssh_claude_code_enabled": settings.ssh_claude_code.ssh_host is not None,
     }
     logger.info("agent-lane settings: %s", safe)

@@ -6,6 +6,10 @@ concurrently (or serially, for UIs that want to show one at a time) via
 
 Agent resolution is intentionally simple and open-ended:
 - "claude-code" / "codex" map to the reference adapters.
+- "ssh-claude-code" maps to `SshClaudeCodeAdapter` (backend/adapters/
+  ssh_claude_code.py), only when `settings.ssh_claude_code.ssh_host` is
+  configured — Claude Code run over SSH on a remote machine instead of a
+  local subprocess.
 - Anything else is looked up in `settings.custom_agents` and built into a
   `CustomCliAdapter` — this is the extension point for third-party agents,
   see backend/adapters/custom_cli.py.
@@ -78,7 +82,10 @@ def _build_wire_sources(
 
 
 def known_agents(settings: Settings) -> tuple[str, ...]:
-    return ("claude-code", "codex", *settings.custom_agents.keys())
+    agents = ("claude-code", "codex")
+    if settings.ssh_claude_code.ssh_host is not None:
+        agents = (*agents, "ssh-claude-code")
+    return (*agents, *settings.custom_agents.keys())
 
 
 def build_adapter(agent_name: str, settings: Settings, model: str | None = None) -> Any:
@@ -98,6 +105,20 @@ def build_adapter(agent_name: str, settings: Settings, model: str | None = None)
             project_path=Path(".").resolve(),
             model=model or _DEFAULT_MODELS["codex"],
             providers=settings.model_providers,
+        )
+
+    if agent_name == "ssh-claude-code":
+        ssh = settings.ssh_claude_code
+        if ssh.ssh_host is None:
+            return None
+        from .adapters.ssh_claude_code import SshClaudeCodeAdapter
+
+        return SshClaudeCodeAdapter(
+            ssh_host=ssh.ssh_host,
+            ssh_user=ssh.ssh_user,
+            ssh_password=ssh.ssh_password.get_secret_value() if ssh.ssh_password else "",
+            project_path=Path(".").resolve(),
+            max_budget_usd=ssh.max_budget_usd,
         )
 
     custom = settings.custom_agents.get(agent_name)
