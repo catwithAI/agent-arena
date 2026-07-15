@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ..model_providers import ModelProviderSection, ModelRef, parse_model_ref, resolve_api_key
+from ..wire.injection import WireInjection
 from .base import AdapterResult, AdapterRunInput, build_security_meta, prompt_context
 
 logger = logging.getLogger(__name__)
@@ -29,20 +30,50 @@ class CodexAdapter:
         self.project_path = str(Path(project_path).resolve())
         self.providers = providers or {}
 
-    def _provider_cli_args(self, model_ref: ModelRef) -> list[str]:
+    @property
+    def wire_capture_capabilities(self) -> dict[str, Any]:
+        """Wire injection consumption capability declaration (lifecycle uses
+        this before the agent starts to filter/drop what this adapter can't
+        consume). Codex has no static provider header channel, so
+        llm_headers stays False."""
+        return {
+            "process_env": True,
+            "llm_base_url": True,
+            "llm_headers": False,
+            "mcp_rewrites": True,
+        }
+
+    def _provider_cli_args(self, model_ref: ModelRef, injection: WireInjection) -> list[str]:
         """Provider-prefixed models are injected as a one-shot `-c` override
-        naming a provider — never touches the user's global config.toml."""
+        naming a provider — never touches the user's global config.toml.
+
+        Wire injection consumption point: injection.llm_base_url overrides
+        this run's model_providers.<id>.base_url."""
         if model_ref.provider is None:
             return ["-m", model_ref.model]
         p = self.providers[model_ref.provider]
         name = model_ref.provider
+        base_url = (
+            injection.llm_base_url if injection.enabled and injection.llm_base_url else p.base_url
+        )
         args = [
             "-c", f'model_providers.{name}.name="{name}"',
-            "-c", f'model_providers.{name}.base_url="{p.base_url}"',
+            "-c", f'model_providers.{name}.base_url="{base_url}"',
             "-c", f'model_providers.{name}.wire_api="{p.wire_api}"',
         ]
         if p.api_key_env:
             args += ["-c", f'model_providers.{name}.env_key="{p.api_key_env}"']
+        # Capture token goes through Codex's env_http_headers mapping: the
+        # X-Lane-Capture-Token header's value is read from the
+        # LANE_WIRE_CAPTURE_TOKEN env var at request time, so the token never
+        # appears on the command line (-c args).
+        if injection.enabled and injection.capture_token:
+            args += [
+                "-c",
+                'model_providers.'
+                f'{name}.env_http_headers='
+                '{ "X-Lane-Capture-Token" = "LANE_WIRE_CAPTURE_TOKEN" }',
+            ]
         args += ["-c", f'model_provider="{name}"', "-m", model_ref.model]
         return args
 
@@ -67,6 +98,7 @@ class CodexAdapter:
         prompt = self._render_prompt(task, server_name)
         sn = server_name
         model_ref = parse_model_ref(self.model, self.providers)
+        mcp_command, mcp_args = self._mcp_command_and_args(task)
         cmd = [
             cli_path,
             "exec",
@@ -75,11 +107,11 @@ class CodexAdapter:
             "--ephemeral",
             "--ignore-rules",
             "--dangerously-bypass-approvals-and-sandbox",
-            *self._provider_cli_args(model_ref),
+            *self._provider_cli_args(model_ref, task.wire_injection),
             "-C", str(attempt_dir.resolve()),
             "-o", str(final_message_path.resolve()),
-            "-c", f'mcp_servers.{sn}.command="uv"',
-            "-c", f"mcp_servers.{sn}.args=" f"{json.dumps(self._mcp_args(task), ensure_ascii=True)}",
+            "-c", f'mcp_servers.{sn}.command="{mcp_command}"',
+            "-c", f"mcp_servers.{sn}.args=" f"{json.dumps(mcp_args, ensure_ascii=True)}",
             "-c", f'mcp_servers.{sn}.env.LANE_ATTEMPT_ID="{task.attempt_id}"',
             "-c", f'mcp_servers.{sn}.env.LANE_SESSION_TOKEN="{task.session_token}"',
             "-c", f'mcp_servers.{sn}.env.LANE_BASE_URL="{task.env_base_url}"',
@@ -107,6 +139,14 @@ class CodexAdapter:
             api_key = resolve_api_key(provider)
             if provider.api_key_env and api_key:
                 subprocess_env[provider.api_key_env] = api_key
+
+        # wire injection consumption point (process_env + capture token);
+        # base_url/mcp rewrites are consumed above via _provider_cli_args /
+        # _mcp_command_and_args.
+        if task.wire_injection.enabled:
+            subprocess_env.update(task.wire_injection.process_env)
+            if task.wire_injection.capture_token:
+                subprocess_env["LANE_WIRE_CAPTURE_TOKEN"] = task.wire_injection.capture_token
 
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -204,21 +244,30 @@ class CodexAdapter:
             ),
         )
 
-    def _mcp_args(self, task: AdapterRunInput) -> list[str]:
-        return [
+    def _mcp_command_and_args(self, task: AdapterRunInput) -> tuple[str, list[str]]:
+        """Final command/args for the MCP server; the wire mcp rewrite hook
+        is applied here so it wraps only the server agent-lane injected."""
+        command = "uv"
+        args = [
             "run", "--project", self.project_path,
             "python",
             f"{self.project_path}/envs/{task.env_name}/mcp_server.py",
         ]
+        rewrite = task.wire_injection.mcp_rewrites.get(f"lane-{task.env_name}")
+        if task.wire_injection.enabled and rewrite is not None:
+            args = [*rewrite.args_prefix, command, *args]
+            command = rewrite.command
+        return command, args
 
     def _write_mcp_config_snapshot(
         self, task: AdapterRunInput, attempt_dir: Path, server_name: str
     ) -> None:
+        command, args = self._mcp_command_and_args(task)
         config = {
             "mcp_servers": {
                 server_name: {
-                    "command": "uv",
-                    "args": self._mcp_args(task),
+                    "command": command,
+                    "args": args,
                     "env": {
                         "LANE_ATTEMPT_ID": task.attempt_id,
                         "LANE_SESSION_TOKEN": task.session_token,

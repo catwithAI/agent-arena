@@ -157,13 +157,34 @@ _ADAPTER_TERMINAL_NO_SCORE = frozenset(
 )
 
 
-async def run_attempt(adapter: _AdapterLike) -> RunAttemptResult:
+async def run_attempt(adapter: _AdapterLike, *, observer: Any | None = None) -> RunAttemptResult:
     """Full lifecycle for a single attempt. Every failure mode is captured
-    into a terminal status; this never raises."""
+    into a terminal status; this never raises.
+
+    `observer` is the wire capture lifecycle hook (backend/wire/lifecycle.py:
+    `WireCaptureSession`) — advances capture phases around the adapter run
+    and finalizes the wire manifest. Defaults to a no-op observer so callers
+    that don't care about wire capture see identical behavior to before it
+    existed.
+    """
+    from .wire.lifecycle import NullAttemptObserver
+
+    observer = observer or NullAttemptObserver()
+    try:
+        return await _run_attempt_inner(adapter, observer)
+    finally:
+        try:
+            await observer.attempt_end()
+        except Exception:
+            logger.exception("wire observer.attempt_end fail-open")
+
+
+async def _run_attempt_inner(adapter: _AdapterLike, observer: Any) -> RunAttemptResult:
     state = runtime_state.get()
 
     try:
-        adapter_result = await adapter.run()
+        async with observer.phase("agent_run"):
+            adapter_result = await adapter.run()
     except Exception as exc:
         logger.exception("adapter.run() crashed")
         return _finalize_no_score(
@@ -174,6 +195,10 @@ async def run_attempt(adapter: _AdapterLike) -> RunAttemptResult:
             error_message=str(exc),
             pass_threshold=60,
         )
+    try:
+        await observer.agent_result(adapter_result)
+    except Exception:
+        logger.exception("wire observer.agent_result fail-open")
 
     attempt_id = adapter_result.attempt_id
     adapter_status = adapter_result.status

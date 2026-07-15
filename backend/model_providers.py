@@ -22,6 +22,24 @@ class ModelProviderSection(BaseModel):
     custom_headers: str | None = None
     # codex only: which wire protocol the endpoint speaks.
     wire_api: Literal["chat", "responses"] = "responses"
+    # Auth header style (claude-code only): bearer sends
+    # `Authorization: Bearer <key>` (ANTHROPIC_AUTH_TOKEN), api-key sends
+    # `x-api-key: <key>` (ANTHROPIC_API_KEY). None -> default to bearer; most
+    # gateways only accept one of the two and they're mutually exclusive, no
+    # value rewriting happens between them.
+    auth_mode: Literal["bearer", "api-key"] | None = None
+
+    def effective_auth_mode(self) -> Literal["bearer", "api-key"]:
+        return self.auth_mode or "bearer"
+
+    def wire_protocol(self) -> str:
+        """Maps `kind` to the wire-layer protocol vocabulary consumed by
+        `backend/wire/sources/parse.py` (backend/wire/sources/parse.py:34-36)."""
+        return {
+            "anthropic": "anthropic-messages",
+            "openai-chat": "openai-chat-completions",
+            "openai-responses": "openai-responses",
+        }[self.kind]
 
 
 @dataclass

@@ -2,6 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api, type ArtifactStep, type AttemptDetail, type AttemptSummary, type RunDetail as RunDetailModel } from "../api/client";
+import { WirePanel } from "../wire/WirePanel";
+import { ArtifactsPanel } from "../artifacts/ArtifactsPanel";
+
+// 供测试直接从 pages/RunDetail 引入（WirePanel.test.tsx / ArtifactsPanel.test.tsx
+// mock ../api/client 后 import { WirePanel } from "../pages/RunDetail"）：
+// 真正实现在各自目录下，这里只是重新导出，避免把 2604 行内联实现塞回本文件。
+export { WirePanel } from "../wire/WirePanel";
+export { ArtifactsPanel } from "../artifacts/ArtifactsPanel";
 
 // ── event parsing (claude-code stream-json / codex --json) ──
 
@@ -131,7 +139,7 @@ function Transcript({ events }: { events: Array<Record<string, unknown>> }) {
 function AttemptColumn({ runId, attempt }: { runId: string; attempt: AttemptSummary }) {
   const [detail, setDetail] = useState<AttemptDetail | null>(null);
   const [artifacts, setArtifacts] = useState<ArtifactStep[]>([]);
-  const [tab, setTab] = useState<"transcript" | "scores" | "artifacts">("transcript");
+  const [tab, setTab] = useState<"transcript" | "scores" | "artifacts" | "wire">("transcript");
 
   const load = useCallback(() => {
     api.getAttempt(runId, attempt.id).then(setDetail);
@@ -169,6 +177,9 @@ function AttemptColumn({ runId, attempt }: { runId: string; attempt: AttemptSumm
         <button className={tab === "artifacts" ? "" : "secondary"} onClick={() => setTab("artifacts")}>
           Artifacts
         </button>
+        <button className={tab === "wire" ? "" : "secondary"} onClick={() => setTab("wire")}>
+          Wire
+        </button>
       </div>
 
       {tab === "transcript" && detail && <Transcript events={detail.events} />}
@@ -187,24 +198,10 @@ function AttemptColumn({ runId, attempt }: { runId: string; attempt: AttemptSumm
         </div>
       )}
       {tab === "artifacts" && (
-        <div>
-          {artifacts.length === 0 && <p className="muted">No artifacts.</p>}
-          {artifacts.map((step) => (
-            <div key={step.step}>
-              <p className="muted">{step.step}</p>
-              <ul>
-                {step.files.map((f) => (
-                  <li key={f.name}>
-                    <a href={api.artifactUrl(runId, attempt.id, step.step, f.name)} target="_blank" rel="noreferrer">
-                      {f.name}
-                    </a>{" "}
-                    <span className="muted">({f.size}B)</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
+        <ArtifactsPanel runId={runId} attemptId={attempt.id} steps={artifacts} />
+      )}
+      {tab === "wire" && (
+        <WirePanel runId={runId} attemptId={attempt.id} label={attempt.agent_name} />
       )}
     </div>
   );

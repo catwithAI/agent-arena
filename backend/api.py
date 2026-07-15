@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import copy
 import json
 import logging
@@ -25,6 +27,7 @@ from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
 from . import runtime_state
+from .artifact_preview import scheduled_preview_descriptor
 from .db import _now_iso, _open_sync
 from .run_dispatch import dispatch as dispatch_attempt
 from .run_dispatch import known_agents
@@ -277,13 +280,246 @@ _ATTEMPT_ROOT_FRAMEWORK_FILES = {
     "codex_final.txt",
     "stderr.txt",
     "prompt.txt",
+    # Wire observability (backend/wire/): canonical evidence is only served
+    # through the dedicated /wire API (policy/permission gated), never listed
+    # as a plain artifact.
+    "wire.jsonl",
+    "wire-manifest.json",
 }
+
+# Framework-written subdirectories under the attempt root, excluded from the
+# artifacts view for the same reason as _ATTEMPT_ROOT_FRAMEWORK_FILES.
+_ATTEMPT_FRAMEWORK_DIRS = {"wire-sources", "wire-blobs", "artifact-previews"}
+
+
+def _artifacts_roots(attempt_dir: Path) -> list[Path]:
+    """claude-code/codex/custom-cli adapters all run as a host process with
+    cwd=attempt_dir, so submissions usually land directly in the attempt
+    root. Some envs also stage a `skill_workspace/` scratch directory for the
+    agent and scorer to read/write sidecars in — both are legitimate output
+    locations, so both are candidate roots; whichever actually has files
+    gets shown, they aren't mutually exclusive."""
+    roots: list[Path] = []
+    workspace = attempt_dir / "skill_workspace"
+    # skill_workspace could be maliciously replaced with a symlink pointing
+    # outside the attempt dir -- such a root must never enter the artifact
+    # namespace.
+    if workspace.is_dir() and not workspace.is_symlink():
+        try:
+            workspace.resolve().relative_to(attempt_dir.resolve())
+        except (OSError, ValueError):
+            pass
+        else:
+            roots.append(workspace)
+    if attempt_dir.is_dir() and any(
+        f
+        for f in attempt_dir.iterdir()
+        if not f.name.startswith(".")
+        and f.name != "skill_workspace"
+        and f.name not in _ATTEMPT_ROOT_FRAMEWORK_FILES
+        and f.name not in _ATTEMPT_FRAMEWORK_DIRS
+        and not f.is_symlink()
+        and (f.is_file() or f.is_dir())
+    ):
+        roots.append(attempt_dir)
+    return roots
 
 
 def _artifacts_root(attempt_dir: Path) -> Path:
-    """claude-code/codex/custom-cli adapters all run as a host process with
-    cwd=attempt_dir, so submissions land directly in the attempt root."""
+    """Back-compat single-root accessor; prefer `_artifacts_roots`."""
     return attempt_dir
+
+
+def _resolve_artifact_path(attempt_dir: Path, path: str) -> Path:
+    """Resolve the public artifact ref emitted by `list_artifacts`.
+
+    `attempt-root` and `.` are UI namespace labels, not physical child
+    directories. Resolution happens before the containment check so the
+    same path contract is shared by the download and preview endpoints.
+    """
+    # The URL path must not contain a hidden segment, backslash, or dot
+    # traversal. A final `relative_to` check alone isn't enough:
+    # `x/../wire.jsonl` still ends up inside root but would skip the
+    # first-segment framework-file check below, and a hidden file would
+    # bypass the listing filter and be downloaded directly.
+    raw_parts = Path(path).parts
+    if (
+        not raw_parts
+        or "\\" in path
+        or any(part == ".." or part.startswith(".") for part in raw_parts)
+    ):
+        raise HTTPException(status_code=404, detail=f"artifact not found: {path}")
+    if raw_parts[0] == "attempt-root":
+        roots_and_parts = [(attempt_dir, raw_parts[1:])]
+    elif raw_parts[0] == ".":
+        roots_and_parts = [(attempt_dir / "skill_workspace", raw_parts[1:])]
+    else:
+        roots_and_parts = [(root, raw_parts) for root in _artifacts_roots(attempt_dir)]
+
+    for root, parts in roots_and_parts:
+        if not parts:
+            continue
+        if root == attempt_dir and (
+            parts[0] in _ATTEMPT_FRAMEWORK_DIRS or parts[0] in _ATTEMPT_ROOT_FRAMEWORK_FILES
+        ):
+            continue
+        candidate = root.joinpath(*parts)
+        try:
+            resolved = candidate.resolve()
+            resolved.relative_to(root.resolve())
+            attempt_relative = resolved.relative_to(attempt_dir.resolve())
+        except (OSError, ValueError):
+            continue
+        # Re-check the attempt-root framework exclusion after resolving, so
+        # no alias/normalization can bypass the artifact/wire/preview-cache
+        # isolation.
+        if (
+            attempt_relative.parts and attempt_relative.parts[0] in _ATTEMPT_FRAMEWORK_DIRS
+        ) or (
+            len(attempt_relative.parts) == 1
+            and attempt_relative.name in _ATTEMPT_ROOT_FRAMEWORK_FILES
+        ):
+            continue
+        if resolved.is_file():
+            return resolved
+    raise HTTPException(status_code=404, detail=f"artifact not found: {path}")
+
+
+def _scan_artifacts(attempt_dir: Path) -> list[dict[str, Any]]:
+    """Synchronous bounded artifact scan; API callers run it in a worker thread."""
+    from .artifact_preview import inspect_artifact
+
+    def _scan_dir(d: Path, *, exclude: set[str] = frozenset()) -> list[dict[str, Any]]:
+        files: list[dict[str, Any]] = []
+        if d.is_symlink():
+            return files
+        try:
+            children = sorted(d.iterdir())
+            root_resolved = d.resolve()
+        except OSError:
+            return files
+        for f in children:
+            if f.is_symlink() or not f.is_file() or f.name.startswith(".") or f.name in exclude:
+                continue
+            try:
+                resolved = f.resolve()
+                resolved.relative_to(root_resolved)
+                stat = resolved.stat()
+            except (OSError, ValueError):
+                continue
+            inspection = inspect_artifact(resolved)
+            files.append(
+                {
+                    "name": f.name,
+                    "size": stat.st_size,
+                    "type": inspection.artifact_type,
+                    "media_type": inspection.media_type,
+                }
+            )
+        return files
+
+    items: list[dict[str, Any]] = []
+    for root in _artifacts_roots(attempt_dir):
+        if not root.is_dir() or root.is_symlink():
+            continue
+        is_attempt_root = root == attempt_dir
+        exclude = _ATTEMPT_ROOT_FRAMEWORK_FILES if is_attempt_root else frozenset()
+        root_step = "attempt-root" if is_attempt_root else "."
+        root_files = _scan_dir(root, exclude=exclude)
+        if root_files:
+            items.append({"step": root_step, "files": root_files})
+        try:
+            subdirs = sorted(root.iterdir())
+            root_resolved = root.resolve()
+        except OSError:
+            continue
+        for sub in subdirs:
+            if (
+                sub.name.startswith(".")
+                or sub.name == "skill_workspace"
+                or sub.is_symlink()
+                or not sub.is_dir()
+                or (is_attempt_root and sub.name in _ATTEMPT_FRAMEWORK_DIRS)
+            ):
+                continue
+            try:
+                sub.resolve().relative_to(root_resolved)
+            except (OSError, ValueError):
+                continue
+            files = _scan_dir(sub)
+            if files:
+                items.append({"step": sub.name, "files": files})
+    return items
+
+
+def _artifact_attempt_dir(*, data_path: Path, db_path: Path, run_id: str, attempt_id: str) -> Path:
+    """Authorize an artifact namespace by the run→attempt relation.
+
+    Artifact refs are scoped by both IDs in the public URL. Looking up files
+    by `attempt_id` alone would let a valid attempt be read through an
+    unrelated run URL. Return a uniform 404 so callers can't use this
+    endpoint to probe attempt ownership.
+    """
+    with _open_sync(db_path) as conn:
+        row = conn.execute(
+            "SELECT 1 FROM attempts WHERE id=? AND run_id=?", (attempt_id, run_id)
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="artifact not found")
+    return data_path / "attempts" / attempt_id
+
+
+def _attempt_change_signature(attempt_dir: Path) -> tuple[Any, ...]:
+    """A cheap, comparable snapshot of "has anything about this attempt
+    changed" -- used by callers that poll for updates instead of tailing
+    files directly."""
+    watched = ("events.jsonl", "thinking.jsonl", "stderr.txt")
+    signature: list[Any] = []
+    for name in watched:
+        path = attempt_dir / name
+        try:
+            stat = path.stat()
+            signature.append((name, stat.st_mtime_ns, stat.st_size))
+        except FileNotFoundError:
+            signature.append((name, 0, 0))
+
+    artifact_count = 0
+    artifact_size = 0
+    artifact_mtime = 0
+    for root in _artifacts_roots(attempt_dir):
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file() or path.name.startswith("."):
+                continue
+            # Wire spool/blob stay out of the signature: running attempts
+            # flush them line-by-line, which would cause high-frequency
+            # false positives; the finalize/rebuild change is expressed via
+            # the manifest generation counter below instead.
+            if any(part in _ATTEMPT_FRAMEWORK_DIRS for part in path.parts):
+                continue
+            with contextlib.suppress(OSError):
+                stat = path.stat()
+                artifact_count += 1
+                artifact_size += stat.st_size
+                artifact_mtime = max(artifact_mtime, stat.st_mtime_ns)
+    signature.append(("artifacts", artifact_count, artifact_size, artifact_mtime))
+
+    # Wire finalize/rebuild changes the manifest without necessarily
+    # changing mtime/size in a way pollers would notice reliably, so the
+    # monotonic finalize generation counter is part of the signature;
+    # fall back to mtime/size if the manifest can't be read.
+    manifest_path = attempt_dir / "wire-manifest.json"
+    try:
+        generation = json.loads(manifest_path.read_text(encoding="utf-8")).get("generation")
+        signature.append(("wire-manifest", "generation", generation))
+    except (OSError, json.JSONDecodeError, AttributeError):
+        try:
+            stat = manifest_path.stat()
+            signature.append(("wire-manifest", stat.st_mtime_ns, stat.st_size))
+        except FileNotFoundError:
+            signature.append(("wire-manifest", 0, 0))
+    return tuple(signature)
 
 
 # ---------- routes -------------------------------------------------------------
@@ -451,59 +687,58 @@ def build_router() -> APIRouter:
     @router.get("/runs/{run_id}/attempts/{attempt_id}/artifacts")
     async def list_artifacts(run_id: str, attempt_id: str) -> list[dict[str, Any]]:
         state = runtime_state.get()
-        attempt_dir = state.data_path / "attempts" / attempt_id
-        root = _artifacts_root(attempt_dir)
-        if not root.is_dir():
-            return []
+        attempt_dir = await asyncio.to_thread(
+            _artifact_attempt_dir,
+            data_path=state.data_path,
+            db_path=state.db_path,
+            run_id=run_id,
+            attempt_id=attempt_id,
+        )
+        return await asyncio.to_thread(_scan_artifacts, attempt_dir)
 
-        def _file_type(suffix: str) -> str:
-            if suffix in (".png", ".jpg", ".jpeg", ".svg", ".gif", ".webp"):
-                return "image"
-            if suffix in (".mp4", ".webm", ".mov"):
-                return "video"
-            if suffix in (".mp3", ".wav", ".ogg"):
-                return "audio"
-            return "text"
-
-        def _scan_dir(d: Path, *, exclude: set[str] = frozenset()) -> list[dict[str, Any]]:
-            return [
-                {"name": f.name, "size": f.stat().st_size, "type": _file_type(f.suffix)}
-                for f in sorted(d.iterdir())
-                if f.is_file() and not f.name.startswith(".") and f.name not in exclude
-            ]
-
-        items: list[dict[str, Any]] = []
-        root_files = _scan_dir(root, exclude=_ATTEMPT_ROOT_FRAMEWORK_FILES)
-        if root_files:
-            items.append({"step": "attempt-root", "files": root_files})
-        for sub in sorted(root.iterdir()):
-            if sub.is_dir():
-                files = _scan_dir(sub)
-                if files:
-                    items.append({"step": sub.name, "files": files})
-        return items
+    @router.get("/runs/{run_id}/attempts/{attempt_id}/artifact-previews/{path:path}")
+    async def get_artifact_preview(run_id: str, attempt_id: str, path: str):
+        """Office document preview descriptor (backend/artifact_preview.py).
+        Never returns the raw, untrusted Office bytes -- only a scanned,
+        structural summary safe to render directly."""
+        state = runtime_state.get()
+        attempt_dir = await asyncio.to_thread(
+            _artifact_attempt_dir,
+            data_path=state.data_path,
+            db_path=state.db_path,
+            run_id=run_id,
+            attempt_id=attempt_id,
+        )
+        file_path = await asyncio.to_thread(_resolve_artifact_path, attempt_dir, path)
+        return await asyncio.to_thread(
+            scheduled_preview_descriptor, file_path, path, attempt_dir / "artifact-previews"
+        )
 
     @router.get("/runs/{run_id}/attempts/{attempt_id}/artifacts/{path:path}")
     async def get_artifact(run_id: str, attempt_id: str, path: str):
         from fastapi.responses import FileResponse, PlainTextResponse
 
+        from .artifact_preview import inspect_artifact
+
         state = runtime_state.get()
-        attempt_dir = state.data_path / "attempts" / attempt_id
-        root = _artifacts_root(attempt_dir)
-        file_path = root / path
-        if not file_path.is_file():
-            raise HTTPException(status_code=404, detail=f"artifact not found: {path}")
-        try:
-            file_path.resolve().relative_to(root.resolve())
-        except ValueError:
-            raise HTTPException(status_code=403, detail="path traversal blocked")
-        binary_types = {
-            ".png", ".jpg", ".jpeg", ".svg", ".gif", ".webp",
-            ".mp4", ".webm", ".mov", ".mp3", ".wav", ".ogg",
-        }
-        if file_path.suffix in binary_types:
-            return FileResponse(file_path)
-        return PlainTextResponse(file_path.read_text(encoding="utf-8", errors="replace"))
+        attempt_dir = await asyncio.to_thread(
+            _artifact_attempt_dir,
+            data_path=state.data_path,
+            db_path=state.db_path,
+            run_id=run_id,
+            attempt_id=attempt_id,
+        )
+        file_path = await asyncio.to_thread(_resolve_artifact_path, attempt_dir, path)
+        inspection = await asyncio.to_thread(inspect_artifact, file_path)
+        if inspection.artifact_type == "text":
+            content = await asyncio.to_thread(
+                file_path.read_text, encoding="utf-8", errors="replace"
+            )
+            return PlainTextResponse(content)
+        # Office/unknown binary is always downloaded or rendered by a
+        # dedicated endpoint; it must never pass through
+        # read_text(errors="replace").
+        return FileResponse(file_path, media_type=inspection.media_type)
 
     @router.post("/upload")
     async def upload_file(request: Request):

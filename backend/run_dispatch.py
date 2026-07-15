@@ -22,7 +22,10 @@ from .adapters.base import AdapterRunInput
 from .adapters.custom_cli import CustomCliAdapter, CustomCliConfig
 from .config import Settings
 from .db import _now_iso, _open_sync
+from .model_providers import parse_model_ref
 from .runner import run_attempt
+from .wire.lifecycle import CapturePreparationError, WireCaptureSession, capture_capabilities_for
+from .wire.policy import resolve_effective_policy
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,48 @@ _DEFAULT_MODELS = {
     "claude-code": "sonnet",
     "codex": "gpt-5",
 }
+
+# Wire capture only covers agents that run over plain HTTP+SSE with a
+# rewritable base URL (claude-code / codex). Anything plugged in via
+# CustomCliAdapter gets no wire source until it declares wire capabilities.
+_HTTP_PROXY_AGENTS = frozenset({"claude-code", "codex"})
+_MCP_TAP_AGENTS = frozenset({"claude-code", "codex"})
+
+
+def _build_wire_sources(
+    *,
+    agent_name: str,
+    model: str | None,
+    settings: Settings,
+    attempt_id: str,
+    env_name: str,
+    data_path: Any,
+) -> list[Any]:
+    """Assemble the wire capture sources for this attempt:
+    - HttpProxySource: claude-code/codex on a named third-party provider.
+    - McpStdioSource: claude-code/codex (wraps the MCP server agent-lane
+      injects).
+    """
+    sources: list[Any] = []
+    if agent_name in _HTTP_PROXY_AGENTS and model:
+        ref = parse_model_ref(model, settings.model_providers or {})
+        if ref.provider is not None:
+            from .wire.sources.http_proxy_source import HttpProxySource
+
+            sources.append(
+                HttpProxySource(
+                    attempt_id=attempt_id,
+                    provider=ref.provider,
+                    public_base_url=settings.lane.public_base_url,
+                )
+            )
+    if agent_name in _MCP_TAP_AGENTS:
+        from .wire.sources.mcp_stdio import McpStdioSource
+
+        sources.append(
+            McpStdioSource(attempt_id=attempt_id, env_name=env_name, data_path=data_path)
+        )
+    return sources
 
 
 def known_agents(settings: Settings) -> tuple[str, ...]:
@@ -122,6 +167,55 @@ async def dispatch(
         _refresh_run_status(state.db_path, attempt_id)
         return
 
+    # Wire capture: prepare always runs before adapter.run(). With no source
+    # wired up (unknown agent, no named third-party provider) this is a
+    # no-op that returns a zero injection, so behavior is identical to
+    # before wire capture existed. Fail-open by default: if a source can't
+    # come up, the injection just stays empty rather than corrupting the
+    # adapter's env/base_url — the one fail-closed path is a strict source
+    # that must rewrite the transport and can't get ready, which is caught
+    # below.
+    protected_env_keys = frozenset(
+        p.api_key_env for p in (settings.model_providers or {}).values() if p.api_key_env
+    )
+    wire_sources = _build_wire_sources(
+        agent_name=agent_name,
+        model=model,
+        settings=settings,
+        attempt_id=attempt_id,
+        env_name=env_name,
+        data_path=state.data_path,
+    )
+    effective_policy = resolve_effective_policy(
+        server_max=settings.lane.wire_capture_max_policy,
+        run_requested=None,
+    )
+    capture = WireCaptureSession(
+        attempt_id=attempt_id,
+        data_path=state.data_path,
+        agent_name=agent_name,
+        sources=wire_sources,
+        adapter_capabilities=capture_capabilities_for(agent_name, adapter),
+        policy=effective_policy,
+        protected_env_keys=protected_env_keys,
+    )
+    try:
+        injection = await capture.prepare(phase="agent_run")
+    except CapturePreparationError as exc:
+        from .runner import _finalize_no_score
+
+        logger.error("dispatch: capture prepare failed attempt=%s: %s", attempt_id, exc)
+        _finalize_no_score(
+            db_path=state.db_path,
+            attempt_id=attempt_id,
+            status="capture_infrastructure_failed",
+            error_code="capture_preparation_failed",
+            error_message=str(exc),
+            pass_threshold=60,
+        )
+        _refresh_run_status(state.db_path, attempt_id)
+        return
+
     task = AdapterRunInput(
         attempt_id=attempt_id,
         task_id=task_id,
@@ -132,9 +226,17 @@ async def dispatch(
         env_skill_id=f"lane/{env_name}",
         session_token=session_token,
         env_base_url=settings.lane.public_base_url,
+        wire_injection=injection,
     )
-    bound = _BoundAdapter(adapter=adapter, task=task, env=env, data_path=state.data_path)
-    await run_attempt(bound)
+    try:
+        bound = _BoundAdapter(adapter=adapter, task=task, env=env, data_path=state.data_path)
+        await run_attempt(bound, observer=capture)
+    except BaseException:
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            await capture.abort_before_or_during_run()
+        raise
     _refresh_run_status(state.db_path, attempt_id)
 
 

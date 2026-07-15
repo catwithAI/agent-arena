@@ -9,6 +9,9 @@ __pycache__/
 agentlane.yaml
 .env
 
+# local-only notes, never committed
+NOTES.local.md
+
 # runtime data
 data/
 logs/

@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from ..wire.injection import WireInjection
+
 
 def build_security_meta(
     *,
@@ -57,6 +59,10 @@ class AdapterRunInput:
     env_skill_id: str  # "lane/<env_name>"
     session_token: str  # plaintext, only used to authorize the MCP tool server
     env_base_url: str  # public address of the attempt server (agent-reachable)
+    # Wire observability injection (backend/wire/), merged by dispatch before
+    # the adapter runs. Defaults to a no-op injection so adapters that don't
+    # care about wire capture behave exactly as before it existed.
+    wire_injection: WireInjection = field(default_factory=WireInjection)
 
 
 def prompt_context(task_context: dict[str, Any]) -> dict[str, Any]:

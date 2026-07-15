@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -51,6 +51,18 @@ class LaneSection(BaseModel):
     # env: LANE_PUBLIC_BASE_URL
     public_base_url: str = "http://127.0.0.1:8100"
 
+    # Wire observability (backend/wire/): captures the raw HTTP/MCP traffic
+    # between agent and model/tools for the trace viewer. Disabled by default
+    # since agent-lane has no per-user auth yet — knowing a run/attempt ID is
+    # enough to call the API, so parsed/full request bodies stay off until a
+    # permission model exists. env: LANE_WIRE_BLOB_API_ENABLED
+    wire_blob_api_enabled: bool = False
+    # Upper bound on the wire capture policy a run/task may request; the
+    # effective policy is the strictest intersection of this and the request.
+    # None = no extra ceiling (still defaults to "off" unless requested).
+    # env: LANE_WIRE_CAPTURE_MAX_POLICY
+    wire_capture_max_policy: Literal["off", "metadata", "parsed", "full"] | None = None
+
 
 class Settings(BaseModel):
     lane: LaneSection = Field(default_factory=LaneSection)
@@ -85,6 +97,10 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
         lane["envs_path"] = v
     if v := os.environ.get("LANE_PUBLIC_BASE_URL"):
         lane["public_base_url"] = v
+    if v := os.environ.get("LANE_WIRE_BLOB_API_ENABLED"):
+        lane["wire_blob_api_enabled"] = v.lower() in ("1", "true", "yes")
+    if v := os.environ.get("LANE_WIRE_CAPTURE_MAX_POLICY"):
+        lane["wire_capture_max_policy"] = v
     data["lane"] = lane
     return data
 
@@ -103,6 +119,8 @@ def _log_settings(settings: Settings) -> None:
             "data_path": str(settings.lane.data_path),
             "envs_path": str(settings.lane.envs_path),
             "public_base_url": settings.lane.public_base_url,
+            "wire_blob_api_enabled": settings.lane.wire_blob_api_enabled,
+            "wire_capture_max_policy": settings.lane.wire_capture_max_policy,
         },
         # only provider names and kind, never base_url / api_key_env target
         "model_providers": {name: p.kind for name, p in settings.model_providers.items()},

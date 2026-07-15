@@ -75,7 +75,15 @@ CREATE TABLE IF NOT EXISTS attempts (
     created_at TEXT NOT NULL,
     execution_locus TEXT,
     permission_mode TEXT,
-    workspace_root TEXT
+    workspace_root TEXT,
+    -- Wire observability (backend/wire/) summary columns (design §18): only
+    -- summary/index data lives here, call/hop/payload evidence stays in the
+    -- per-attempt wire.jsonl + wire-manifest.json, never the main DB.
+    wire_status TEXT NOT NULL DEFAULT 'not_available',
+    wire_record_count INTEGER NOT NULL DEFAULT 0,
+    wire_call_count INTEGER NOT NULL DEFAULT 0,
+    wire_error_count INTEGER NOT NULL DEFAULT 0,
+    wire_manifest_version TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_attempts_run_id ON attempts(run_id);
@@ -130,6 +138,20 @@ async def init_db(db_path: Path) -> None:
     async with aiosqlite.connect(db_path) as conn:
         await conn.executescript(_SCHEMA)
         await conn.commit()
+
+
+def resolve_db_path(data_path: Path) -> Path:
+    """The single sqlite file under a data_path, matching `open_db`'s layout."""
+    return Path(data_path) / "lane.db"
+
+
+def _init_db_sync(db_path: Path) -> None:
+    """Sync counterpart of `init_db`, for tests/helpers that build a DB file
+    without an event loop (mirrors `_open_sync`'s sync style)."""
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with _open_sync(db_path) as conn:
+        conn.executescript(_SCHEMA)
+        conn.commit()
 
 
 async def open_db(data_path: Path) -> aiosqlite.Connection:

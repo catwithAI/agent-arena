@@ -92,6 +92,27 @@ class ClaudeCodeAdapter:
                 subprocess_env.pop("ANTHROPIC_API_KEY", None)
             if provider.custom_headers:
                 subprocess_env["ANTHROPIC_CUSTOM_HEADERS"] = provider.custom_headers
+        # wire injection consumption point: after subprocess_env is built,
+        # before the subprocess is spawned. Merge/validation already happened
+        # in lifecycle (reserved names, secrets) -- this only consumes.
+        wi = task.wire_injection
+        if wi.enabled:
+            subprocess_env.update(wi.process_env)
+            if wi.llm_base_url:
+                subprocess_env["ANTHROPIC_BASE_URL"] = wi.llm_base_url
+            extra_headers = dict(wi.llm_headers) if wi.llm_headers else {}
+            # Capture token must land in a real HTTP header -- the CLI won't
+            # turn an env var into a header on its own, only what's in
+            # ANTHROPIC_CUSTOM_HEADERS gets sent with the request to the
+            # (proxied) base URL. Uses its own header name, not Authorization
+            # (that's occupied by provider auth and the proxy strips it).
+            if wi.capture_token:
+                extra_headers["X-Lane-Capture-Token"] = wi.capture_token
+                subprocess_env["LANE_WIRE_CAPTURE_TOKEN"] = wi.capture_token
+            if extra_headers:
+                subprocess_env["ANTHROPIC_CUSTOM_HEADERS"] = _merge_custom_headers(
+                    subprocess_env.get("ANTHROPIC_CUSTOM_HEADERS"), extra_headers
+                )
         cmd = [
             cli_path,
             "-p", prompt,
@@ -248,15 +269,24 @@ class ClaudeCodeAdapter:
         )
 
     def _write_mcp_config(self, task: AdapterRunInput, attempt_dir: Path) -> Path:
+        server_name = f"lane-{task.env_name}"
+        command = "uv"
+        args = [
+            "run", "--project", self.project_path,
+            "python",
+            f"{self.project_path}/envs/{task.env_name}/mcp_server.py",
+        ]
+        # wire mcp rewrite consumption point: only wraps the server agent-lane
+        # itself injected; the original command is pushed to the end of args.
+        rewrite = task.wire_injection.mcp_rewrites.get(server_name)
+        if task.wire_injection.enabled and rewrite is not None:
+            args = [*rewrite.args_prefix, command, *args]
+            command = rewrite.command
         config = {
             "mcpServers": {
-                f"lane-{task.env_name}": {
-                    "command": "uv",
-                    "args": [
-                        "run", "--project", self.project_path,
-                        "python",
-                        f"{self.project_path}/envs/{task.env_name}/mcp_server.py",
-                    ],
+                server_name: {
+                    "command": command,
+                    "args": args,
                     "env": {
                         "LANE_ATTEMPT_ID": task.attempt_id,
                         "LANE_SESSION_TOKEN": task.session_token,
@@ -312,3 +342,44 @@ def _now_iso() -> str:
 def _append_jsonl(path: Path, data: dict) -> None:
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(data, ensure_ascii=False, default=str) + "\n")
+
+
+_DYNAMIC_HEADER_PREFIXES = ("x-eval-", "x-lane-")
+
+
+def _merge_custom_headers(existing: str | None, extra: dict[str, str]) -> str:
+    """Merge the wire injection's attempt-level headers into
+    ANTHROPIC_CUSTOM_HEADERS.
+
+    Parses existing "Name: value" lines case-insensitively (see
+    docs/specs/wire_observability/design.md):
+    - ``x-eval-*`` / ``x-lane-*``: the attempt (injection) value wins,
+      overriding any static value already there;
+    - any other same-named header: the provider's static value is kept, the
+      injected one is dropped rather than appended as a duplicate line.
+    Header name/value legality (token, no CR/LF) is already enforced by
+    lifecycle's merge/validation step.
+    """
+    ordered: list[str] = []  # lowercase name, first-seen order preserved
+    values: dict[str, tuple[str, str]] = {}  # lowercase name -> (original name, value)
+    if existing:
+        for line in existing.splitlines():
+            if ":" not in line:
+                continue
+            name, value = line.split(":", 1)
+            name = name.strip()
+            if not name or name.lower() in values:
+                continue
+            values[name.lower()] = (name, value.strip())
+            ordered.append(name.lower())
+    for name, value in extra.items():
+        key = name.lower()
+        if key not in values:
+            values[key] = (name, value)
+            ordered.append(key)
+        elif key.startswith(_DYNAMIC_HEADER_PREFIXES):
+            # attempt-level correlation header wins, keep the static entry's
+            # original casing/position.
+            values[key] = (values[key][0], value)
+        # any other same-named header: keep the static value
+    return "\n".join(f"{n}: {v}" for n, v in (values[k] for k in ordered))

@@ -1,0 +1,6 @@
+{"type":"system","subtype":"init","session_id":"sess_sub","model":"claude-opus","version":"1.0","timestamp":"2026-07-14T00:00:00.000Z"}
+{"type":"assistant","timestamp":"2026-07-14T00:00:01.000Z","message":{"id":"msg_main1","model":"claude-opus","stop_reason":"tool_use","content":[{"type":"text","text":"我派一个子 agent"},{"type":"tool_use","id":"toolu_task1","name":"Task","input":{"prompt":"搜索机票"}}]}}
+{"type":"assistant","timestamp":"2026-07-14T00:00:02.000Z","parent_tool_use_id":"toolu_task1","message":{"id":"msg_sub1","model":"claude-opus","stop_reason":"tool_use","content":[{"type":"tool_use","id":"toolu_sub_a","name":"flight_search","input":{"from":"PEK"}}]}}
+{"type":"user","timestamp":"2026-07-14T00:00:03.000Z","parent_tool_use_id":"toolu_task1","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_sub_a","content":"found 3 flights"}]}}
+{"type":"assistant","timestamp":"2026-07-14T00:00:04.000Z","message":{"id":"msg_main2","model":"claude-opus","stop_reason":"end_turn","content":[{"type":"text","text":"子 agent 完成了"}]}}
+{"type":"result","subtype":"success","timestamp":"2026-07-14T00:00:05.000Z","usage":{"input_tokens":100,"output_tokens":20}}
