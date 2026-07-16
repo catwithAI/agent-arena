@@ -60,6 +60,14 @@ class ClaudeCodeAdapter:
         data_path = Path(data_path)
         attempt_dir = data_path / "attempts" / task.attempt_id
         attempt_dir.mkdir(parents=True, exist_ok=True)
+        # Agent workspace (design: skill_workspace is the agent's sole world
+        # boundary). cwd is set here, so agent submissions land here — the
+        # attempt root is reserved for the framework's own runtime metadata
+        # (events/thinking/wire/isolated home) and never mixed with agent
+        # output. Defensive mkdir in case nothing has staged env materials
+        # into it yet.
+        workspace = attempt_dir / "skill_workspace"
+        workspace.mkdir(parents=True, exist_ok=True)
         events_path = attempt_dir / "events.jsonl"
         thinking_path = attempt_dir / "thinking.jsonl"
 
@@ -161,7 +169,7 @@ class ClaudeCodeAdapter:
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=str(attempt_dir),
+                cwd=str(workspace),
                 limit=10 * 1024 * 1024,
                 env=subprocess_env,
             )
@@ -284,7 +292,7 @@ class ClaudeCodeAdapter:
             security_meta=build_security_meta(
                 execution_locus="host",
                 permission_mode="--dangerously-skip-permissions",
-                workspace_root=str(attempt_dir.resolve()),
+                workspace_root=str(workspace.resolve()),
             ),
         )
 

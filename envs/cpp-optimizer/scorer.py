@@ -29,7 +29,8 @@ def score(
     **_kwargs: Any,
 ) -> list[dict[str, Any]]:
     attempt_dir = _attempt_dir(attempt_id, env_db)
-    result = _evaluate_workspace(attempt_dir)
+    workspace = attempt_dir / "skill_workspace"
+    result = _evaluate_workspace(workspace)
 
     value = _normalized_score(result)
     detail = (

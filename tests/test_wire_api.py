@@ -356,8 +356,10 @@ def test_wire_files_excluded_from_artifacts(test_client):
     data_path, _ = _paths()
     writer.BlobWriter(data_path, attempt_id).write_json({"secret-ish": 1})
     _write_wire(data_path, attempt_id)
-    # 在 attempt 根放一个真实产物，激活 attempt-root 扫描分支
-    (data_path / "attempts" / attempt_id / "result.txt").write_text("ok")
+    # 在产物根（skill_workspace）放一个真实产物，验证它出现但 wire 框架产物被隔离
+    workspace = data_path / "attempts" / attempt_id / "skill_workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    (workspace / "result.txt").write_text("ok")
 
     listing = test_client.get(
         f"/api/runs/{run_id}/attempts/{attempt_id}/artifacts"

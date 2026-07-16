@@ -258,8 +258,7 @@ export const api = {
   // 支持两种调用形态：既有 (runId, attemptId, step, name) 也支持
   // (runId, attemptId, path) 传入已拼好的相对路径（如 "./deck.pptx"）。
   artifactUrl: (runId: string, attemptId: string, stepOrPath: string, name?: string) => {
-    const path =
-      name === undefined ? stepOrPath : stepOrPath === "attempt-root" ? name : `${stepOrPath}/${name}`;
+    const path = name === undefined ? stepOrPath : `${stepOrPath}/${name}`;
     return `/api/runs/${runId}/attempts/${attemptId}/artifacts/${path}`;
   },
   stopRun: (runId: string) => req<{ stopped: number; run_id: string }>("POST", `/api/runs/${runId}/stop`),

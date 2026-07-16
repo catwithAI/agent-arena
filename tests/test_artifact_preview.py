@@ -775,17 +775,16 @@ def test_office_download_is_byte_identical_and_never_text_decoded(test_client):
     )
 
 
-def test_binary_is_not_listed_as_text_and_attempt_root_ref_downloads(test_client):
-    attempt_dir = runtime_state.get().data_path / "attempts" / ATTEMPT_ID
-    attempt_dir.mkdir(parents=True, exist_ok=True)
+def test_binary_is_not_listed_as_text_and_workspace_ref_downloads(test_client):
+    workspace = _workspace()
     payload = b"\x00\xff\x01binary"
-    (attempt_dir / "result.bin").write_bytes(payload)
+    (workspace / "result.bin").write_bytes(payload)
 
     listing = test_client.get(f"/api/runs/{RUN_ID}/attempts/{ATTEMPT_ID}/artifacts").json()
     listed = next(f for step in listing for f in step["files"] if f["name"] == "result.bin")
     assert listed["type"] == "binary"
     response = test_client.get(
-        f"/api/runs/{RUN_ID}/attempts/{ATTEMPT_ID}/artifacts/attempt-root/result.bin"
+        f"/api/runs/{RUN_ID}/attempts/{ATTEMPT_ID}/artifacts/result.bin"
     )
     assert response.status_code == 200
     assert response.content == payload
@@ -856,12 +855,13 @@ def test_hidden_files_and_directories_are_not_artifacts(test_client):
 
 def test_dot_traversal_cannot_bypass_framework_exclusion():
     attempt_dir = runtime_state.get().data_path / "attempts" / ATTEMPT_ID
-    attempt_dir.mkdir(parents=True, exist_ok=True)
-    (attempt_dir / "result.txt").write_text("visible", encoding="utf-8")
+    workspace = attempt_dir / "skill_workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    (workspace / "result.txt").write_text("visible", encoding="utf-8")
     (attempt_dir / "wire.jsonl").write_text("sensitive", encoding="utf-8")
 
     with pytest.raises(HTTPException) as exc:
-        _resolve_artifact_path(attempt_dir, "x/../wire.jsonl")
+        _resolve_artifact_path(attempt_dir, "x/../../wire.jsonl")
     assert exc.value.status_code == 404
 
 
@@ -907,9 +907,8 @@ def test_symlinked_workspace_root_is_rejected(test_client, tmp_path):
     assert response.status_code == 404
 
 
-def test_attempt_root_directory_only_artifacts_are_listed(test_client):
-    attempt_dir = runtime_state.get().data_path / "attempts" / ATTEMPT_ID
-    output = attempt_dir / "output"
+def test_workspace_subdirectory_artifacts_are_listed(test_client):
+    output = _workspace() / "output"
     output.mkdir(parents=True, exist_ok=True)
     (output / "result.txt").write_text("ok", encoding="utf-8")
     listing = test_client.get(
@@ -919,6 +918,29 @@ def test_attempt_root_directory_only_artifacts_are_listed(test_client):
         step["step"] == "output" and step["files"][0]["name"] == "result.txt"
         for step in listing
     )
+
+
+def test_attempt_root_files_are_not_surfaced_as_artifacts(test_client):
+    # The attempt root belongs entirely to the framework and never enters
+    # the artifact namespace: even if there are files directly under it,
+    # they neither appear in the listing nor can be downloaded through the
+    # artifact endpoint (wire/framework output stays isolated).
+    _workspace()  # ensure skill_workspace exists
+    attempt_dir = runtime_state.get().data_path / "attempts" / ATTEMPT_ID
+    (attempt_dir / "stray.txt").write_text("framework-side", encoding="utf-8")
+    listing = test_client.get(
+        f"/api/runs/{RUN_ID}/attempts/{ATTEMPT_ID}/artifacts"
+    ).json()
+    assert all(
+        f["name"] != "stray.txt" for step in listing for f in step["files"]
+    )
+    # Direct refs also 404 (including the retired attempt-root alias).
+    assert test_client.get(
+        f"/api/runs/{RUN_ID}/attempts/{ATTEMPT_ID}/artifacts/stray.txt"
+    ).status_code == 404
+    assert test_client.get(
+        f"/api/runs/{RUN_ID}/attempts/{ATTEMPT_ID}/artifacts/attempt-root/stray.txt"
+    ).status_code == 404
 
 
 @pytest.mark.parametrize(

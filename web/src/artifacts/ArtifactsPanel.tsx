@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type ArtifactPreviewDescriptor, type ArtifactStep } from "../api/client";
 
 function artifactRef(step: string, name: string): string {
-  return step === "." || step === "attempt-root" ? `./${name}` : `${step}/${name}`;
+  return step === "." ? `./${name}` : `${step}/${name}`;
 }
 
 type SelectedFile = {

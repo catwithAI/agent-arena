@@ -279,79 +279,50 @@ def _read_final_state(path: Path) -> dict[str, Any]:
         return {}
 
 
-# Framework-written runtime metadata/intermediate files under the attempt
-# root — never the agent's actual submission — excluded from the artifacts
-# view so every attempt doesn't show a pile of noise.
-_ATTEMPT_ROOT_FRAMEWORK_FILES = {
-    "events.jsonl",
-    "thinking.jsonl",
-    "mcp_config.json",
-    "codex_mcp_config.json",
-    "codex_final.txt",
-    "stderr.txt",
-    "prompt.txt",
-    # Wire observability (backend/wire/): canonical evidence is only served
-    # through the dedicated /wire API (policy/permission gated), never listed
-    # as a plain artifact.
-    "wire.jsonl",
-    "wire-manifest.json",
-}
-
-# Framework-written subdirectories under the attempt root, excluded from the
-# artifacts view for the same reason as _ATTEMPT_ROOT_FRAMEWORK_FILES.
-_ATTEMPT_FRAMEWORK_DIRS = {"wire-sources", "wire-blobs", "artifact-previews"}
+# Note: the agent artifact root is now uniquely attempt_dir/skill_workspace
+# (see `_artifacts_root`). The attempt root belongs entirely to the
+# framework and never enters the artifact namespace, so there is no longer a
+# need to exclude framework output file-by-file/dir-by-dir — events/wire/
+# trajectory/isolated home are naturally kept out by staying in the root,
+# reachable only through the permission-gated Wire API.
 
 
-def _artifacts_roots(attempt_dir: Path) -> list[Path]:
-    """claude-code/codex/custom-cli adapters all run as a host process with
-    cwd=attempt_dir, so submissions usually land directly in the attempt
-    root. Some envs also stage a `skill_workspace/` scratch directory for the
-    agent and scorer to read/write sidecars in — both are legitimate output
-    locations, so both are candidate roots; whichever actually has files
-    gets shown, they aren't mutually exclusive."""
-    roots: list[Path] = []
+def _artifacts_root(attempt_dir: Path) -> Path | None:
+    """The single root for agent artifacts: attempt_dir/skill_workspace
+    (design: the agent's world boundary).
+
+    claude-code/codex both set their subprocess cwd to this directory, so
+    submissions land here uniformly. The attempt root belongs entirely to
+    the framework (wire/trajectory/events/isolated home) and never enters
+    the artifact namespace, so wire capture is only reachable through the
+    permission-gated Wire API — the isolation holds without a file-name
+    blacklist.
+
+    skill_workspace could be maliciously replaced with a symlink pointing
+    outside the attempt dir; such a root must never enter the namespace.
+    """
     workspace = attempt_dir / "skill_workspace"
-    # skill_workspace could be maliciously replaced with a symlink pointing
-    # outside the attempt dir -- such a root must never enter the artifact
-    # namespace.
-    if workspace.is_dir() and not workspace.is_symlink():
-        try:
-            workspace.resolve().relative_to(attempt_dir.resolve())
-        except (OSError, ValueError):
-            pass
-        else:
-            roots.append(workspace)
-    if attempt_dir.is_dir() and any(
-        f
-        for f in attempt_dir.iterdir()
-        if not f.name.startswith(".")
-        and f.name != "skill_workspace"
-        and f.name not in _ATTEMPT_ROOT_FRAMEWORK_FILES
-        and f.name not in _ATTEMPT_FRAMEWORK_DIRS
-        and not f.is_symlink()
-        and (f.is_file() or f.is_dir())
-    ):
-        roots.append(attempt_dir)
-    return roots
-
-
-def _artifacts_root(attempt_dir: Path) -> Path:
-    """Back-compat single-root accessor; prefer `_artifacts_roots`."""
-    return attempt_dir
+    if not workspace.is_dir() or workspace.is_symlink():
+        return None
+    try:
+        workspace.resolve().relative_to(attempt_dir.resolve())
+    except (OSError, ValueError):
+        return None
+    return workspace
 
 
 def _resolve_artifact_path(attempt_dir: Path, path: str) -> Path:
     """Resolve the public artifact ref emitted by `list_artifacts`.
 
-    `attempt-root` and `.` are UI namespace labels, not physical child
-    directories. Resolution happens before the containment check so the
-    same path contract is shared by the download and preview endpoints.
+    `.` is a UI namespace label (the root step name), not a physical child
+    directory. Resolution happens before the containment check so the same
+    path contract is shared by the download and preview endpoints.
     """
     # The URL path must not contain a hidden segment, backslash, or dot
-    # traversal. A final `relative_to` check alone isn't enough:
-    # `x/../wire.jsonl` still ends up inside root but would skip the
-    # first-segment framework-file check below, and a hidden file would
-    # bypass the listing filter and be downloaded directly.
+    # traversal. A final `relative_to` check alone isn't enough: `x/../..`
+    # could still end up inside root, and a hidden file would bypass the
+    # listing filter and be downloaded directly, so raw parts are checked
+    # first.
     raw_parts = Path(path).parts
     if (
         not raw_parts
@@ -359,39 +330,20 @@ def _resolve_artifact_path(attempt_dir: Path, path: str) -> Path:
         or any(part == ".." or part.startswith(".") for part in raw_parts)
     ):
         raise HTTPException(status_code=404, detail=f"artifact not found: {path}")
-    if raw_parts[0] == "attempt-root":
-        roots_and_parts = [(attempt_dir, raw_parts[1:])]
-    elif raw_parts[0] == ".":
-        roots_and_parts = [(attempt_dir / "skill_workspace", raw_parts[1:])]
-    else:
-        roots_and_parts = [(root, raw_parts) for root in _artifacts_roots(attempt_dir)]
-
-    for root, parts in roots_and_parts:
-        if not parts:
-            continue
-        if root == attempt_dir and (
-            parts[0] in _ATTEMPT_FRAMEWORK_DIRS or parts[0] in _ATTEMPT_ROOT_FRAMEWORK_FILES
-        ):
-            continue
-        candidate = root.joinpath(*parts)
-        try:
-            resolved = candidate.resolve()
-            resolved.relative_to(root.resolve())
-            attempt_relative = resolved.relative_to(attempt_dir.resolve())
-        except (OSError, ValueError):
-            continue
-        # Re-check the attempt-root framework exclusion after resolving, so
-        # no alias/normalization can bypass the artifact/wire/preview-cache
-        # isolation.
-        if (
-            attempt_relative.parts and attempt_relative.parts[0] in _ATTEMPT_FRAMEWORK_DIRS
-        ) or (
-            len(attempt_relative.parts) == 1
-            and attempt_relative.name in _ATTEMPT_ROOT_FRAMEWORK_FILES
-        ):
-            continue
-        if resolved.is_file():
-            return resolved
+    root = _artifacts_root(attempt_dir)
+    if root is None:
+        raise HTTPException(status_code=404, detail=f"artifact not found: {path}")
+    parts = raw_parts[1:] if raw_parts[0] == "." else raw_parts
+    if not parts:
+        raise HTTPException(status_code=404, detail=f"artifact not found: {path}")
+    candidate = root.joinpath(*parts)
+    try:
+        resolved = candidate.resolve()
+        resolved.relative_to(root.resolve())
+    except (OSError, ValueError):
+        raise HTTPException(status_code=404, detail=f"artifact not found: {path}")
+    if resolved.is_file():
+        return resolved
     raise HTTPException(status_code=404, detail=f"artifact not found: {path}")
 
 
@@ -399,7 +351,7 @@ def _scan_artifacts(attempt_dir: Path) -> list[dict[str, Any]]:
     """Synchronous bounded artifact scan; API callers run it in a worker thread."""
     from .artifact_preview import inspect_artifact
 
-    def _scan_dir(d: Path, *, exclude: set[str] = frozenset()) -> list[dict[str, Any]]:
+    def _scan_dir(d: Path) -> list[dict[str, Any]]:
         files: list[dict[str, Any]] = []
         if d.is_symlink():
             return files
@@ -409,7 +361,7 @@ def _scan_artifacts(attempt_dir: Path) -> list[dict[str, Any]]:
         except OSError:
             return files
         for f in children:
-            if f.is_symlink() or not f.is_file() or f.name.startswith(".") or f.name in exclude:
+            if f.is_symlink() or not f.is_file() or f.name.startswith("."):
                 continue
             try:
                 resolved = f.resolve()
@@ -429,36 +381,29 @@ def _scan_artifacts(attempt_dir: Path) -> list[dict[str, Any]]:
         return files
 
     items: list[dict[str, Any]] = []
-    for root in _artifacts_roots(attempt_dir):
-        if not root.is_dir() or root.is_symlink():
+    root = _artifacts_root(attempt_dir)
+    if root is None:
+        return items
+    # Files directly under root get the "." step; each subdirectory becomes
+    # its own step (preserving the directory-level grouping in the UI).
+    root_files = _scan_dir(root)
+    if root_files:
+        items.append({"step": ".", "files": root_files})
+    try:
+        subdirs = sorted(root.iterdir())
+        root_resolved = root.resolve()
+    except OSError:
+        return items
+    for sub in subdirs:
+        if sub.name.startswith(".") or sub.is_symlink() or not sub.is_dir():
             continue
-        is_attempt_root = root == attempt_dir
-        exclude = _ATTEMPT_ROOT_FRAMEWORK_FILES if is_attempt_root else frozenset()
-        root_step = "attempt-root" if is_attempt_root else "."
-        root_files = _scan_dir(root, exclude=exclude)
-        if root_files:
-            items.append({"step": root_step, "files": root_files})
         try:
-            subdirs = sorted(root.iterdir())
-            root_resolved = root.resolve()
-        except OSError:
+            sub.resolve().relative_to(root_resolved)
+        except (OSError, ValueError):
             continue
-        for sub in subdirs:
-            if (
-                sub.name.startswith(".")
-                or sub.name == "skill_workspace"
-                or sub.is_symlink()
-                or not sub.is_dir()
-                or (is_attempt_root and sub.name in _ATTEMPT_FRAMEWORK_DIRS)
-            ):
-                continue
-            try:
-                sub.resolve().relative_to(root_resolved)
-            except (OSError, ValueError):
-                continue
-            files = _scan_dir(sub)
-            if files:
-                items.append({"step": sub.name, "files": files})
+        files = _scan_dir(sub)
+        if files:
+            items.append({"step": sub.name, "files": files})
     return items
 
 
@@ -496,17 +441,14 @@ def _attempt_change_signature(attempt_dir: Path) -> tuple[Any, ...]:
     artifact_count = 0
     artifact_size = 0
     artifact_mtime = 0
-    for root in _artifacts_roots(attempt_dir):
-        if not root.is_dir():
-            continue
+    root = _artifacts_root(attempt_dir)
+    if root is not None and root.is_dir():
+        # The artifact root is skill_workspace, which never contains
+        # framework directories like wire spool/blob, so no further
+        # framework-dir filtering is needed here (design §19.4: wire changes
+        # are expressed via the manifest generation counter below instead).
         for path in root.rglob("*"):
             if not path.is_file() or path.name.startswith("."):
-                continue
-            # Wire spool/blob stay out of the signature: running attempts
-            # flush them line-by-line, which would cause high-frequency
-            # false positives; the finalize/rebuild change is expressed via
-            # the manifest generation counter below instead.
-            if any(part in _ATTEMPT_FRAMEWORK_DIRS for part in path.parts):
                 continue
             with contextlib.suppress(OSError):
                 stat = path.stat()
