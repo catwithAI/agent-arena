@@ -13,7 +13,13 @@ from typing import Any
 
 from ..model_providers import ModelProviderSection, ModelRef, parse_model_ref, resolve_api_key
 from ..wire.injection import WireInjection
-from .base import AdapterResult, AdapterRunInput, build_security_meta, prompt_context
+from .base import (
+    AdapterResult,
+    AdapterRunInput,
+    build_security_meta,
+    prompt_context,
+    time_budget_notice,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -312,7 +318,16 @@ class CodexAdapter:
     def _render_prompt(self, task: AdapterRunInput) -> str:
         # The adapter does not prescribe a solving method — MCP is only one
         # option among whatever the agent brings natively.
-        parts = [task.task_prompt]
+        parts: list[str] = []
+        # `codex exec`'s PROMPT argument is the only instructions channel —
+        # there's no separate system-prompt slot like Claude Code's
+        # --append-system-prompt — so the time budget (a framework-level
+        # constraint, not part of the task) is placed at the very top of the
+        # message instead. None (unlimited) yields no notice at all.
+        notice = time_budget_notice(task.timeout_seconds)
+        if notice:
+            parts += [notice, ""]
+        parts.append(task.task_prompt)
         context = prompt_context(task.task_context) if task.task_context else {}
         if context:
             parts.append("")

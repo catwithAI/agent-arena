@@ -34,7 +34,10 @@ CREATE TABLE IF NOT EXISTS tasks (
     prompt TEXT NOT NULL,
     context_json TEXT NOT NULL DEFAULT '{}',
     constraints_json TEXT NOT NULL DEFAULT '{}',
-    timeout_seconds INTEGER NOT NULL DEFAULT 600,
+    -- NULL means "unlimited" (no time-budget notice injected, no adapter
+    -- deadline enforced); the column default (600) only backstops rows
+    -- inserted without the field, preserving prior behavior.
+    timeout_seconds INTEGER DEFAULT 600,
     source TEXT NOT NULL DEFAULT 'file',
     created_at TEXT NOT NULL
 );

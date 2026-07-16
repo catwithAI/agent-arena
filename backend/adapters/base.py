@@ -70,7 +70,12 @@ class AdapterRunInput:
     task_id: str
     task_prompt: str
     task_context: dict[str, Any]
-    timeout_seconds: int
+    # None means "unlimited": no time-budget notice is injected into the
+    # prompt, and adapters must not enforce a wall-clock deadline via
+    # asyncio.wait_for (an inactivity/no-output watchdog, if any, still
+    # applies). This is the "no timeout" baseline for testing agents without
+    # a time constraint.
+    timeout_seconds: int | None
     env_name: str
     env_skill_id: str  # "lane/<env_name>"
     session_token: str  # plaintext, only used to authorize the MCP tool server
@@ -83,6 +88,38 @@ class AdapterRunInput:
     # the adapter runs. Defaults to a no-op injection so adapters that don't
     # care about wire capture behave exactly as before it existed.
     wire_injection: WireInjection = field(default_factory=WireInjection)
+
+
+def _format_time_budget(seconds: int) -> str:
+    """Format a second count into a natural-language duration for the agent
+    (whole minutes preferred, falling back to minutes+seconds or bare
+    seconds)."""
+    if seconds % 60 == 0:
+        return f"{seconds // 60} minute(s)"
+    if seconds < 60:
+        return f"{seconds} second(s)"
+    return f"{seconds // 60} minute(s) {seconds % 60} second(s)"
+
+
+def time_budget_notice(timeout_seconds: int | None) -> str | None:
+    """Time-budget notice shared by every adapter, so the comparison stays
+    fair regardless of which agent is under test.
+
+    This exists to probe an agent's "capability per unit of time": tell it
+    the total budget up front and nudge it to produce a submittable result
+    quickly, then spend whatever's left iterating. `None` (unlimited) — or
+    any non-positive value — returns `None`: no time constraint is injected,
+    so the agent's behavior is identical to a build without this feature.
+    """
+    if timeout_seconds is None or timeout_seconds <= 0:
+        return None
+    budget = _format_time_budget(int(timeout_seconds))
+    return (
+        f"You have a time budget of {budget} for this task. Plan accordingly: "
+        "produce a submittable result as soon as possible, then use any "
+        "remaining time to iterate and improve it. When the time is up the "
+        "evaluation ends, so make sure your best result is already in place."
+    )
 
 
 def prompt_context(task_context: dict[str, Any]) -> dict[str, Any]:

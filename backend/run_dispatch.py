@@ -156,7 +156,7 @@ async def dispatch(
     task_id: str,
     task_prompt: str,
     task_context: dict[str, Any],
-    timeout_seconds: int,
+    timeout_seconds: int | None,
     env_name: str,
     session_token: str,
     model: str | None = None,

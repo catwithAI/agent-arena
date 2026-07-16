@@ -245,7 +245,9 @@ export const api = {
     agents: string[];
     model?: string;
     models?: Record<string, string>;
-    timeout_seconds?: number;
+    // Omitted -> backend keeps its existing default. Explicit `null` ->
+    // unlimited: no time-budget notice is injected, no deadline enforced.
+    timeout_seconds?: number | null;
   }) => req<CreateRunResponse>("POST", "/api/runs", body),
   listRuns: () => req<RunRow[]>("GET", "/api/runs"),
   getRun: (runId: string) => req<RunDetail>("GET", `/api/runs/${runId}`),

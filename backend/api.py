@@ -97,7 +97,11 @@ class CreateRunRequest(BaseModel):
     prompt: str | None = None
     context: dict[str, Any] = Field(default_factory=dict)
     constraints: dict[str, Any] = Field(default_factory=dict)
-    timeout_seconds: int = 1000
+    # Omitted -> keeps the existing default (1000s), preserving prior
+    # behavior for callers that don't know about this field. Explicit
+    # `null` -> unlimited: no time-budget notice is injected into the
+    # prompt and the adapter enforces no wall-clock deadline.
+    timeout_seconds: int | None = 1000
     agents: list[str] = Field(default=["claude-code", "codex"])
     # single model applied to every agent, or a per-agent {agent: model} map
     model: str | None = None

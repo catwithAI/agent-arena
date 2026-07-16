@@ -31,7 +31,13 @@ from pathlib import Path
 from typing import Any
 
 from ..model_providers import ModelProviderSection, parse_model_ref, resolve_api_key
-from .base import AdapterResult, AdapterRunInput, build_security_meta, prompt_context
+from .base import (
+    AdapterResult,
+    AdapterRunInput,
+    build_security_meta,
+    prompt_context,
+    time_budget_notice,
+)
 from .token_usage import (
     estimate_tokens_from_event,
     result_usage_tokens,
@@ -82,6 +88,12 @@ class ClaudeCodeAdapter:
 
         mcp_config_path = self._write_mcp_config(task, attempt_dir)
         prompt = self._render_prompt(task)
+        # Time budget (probes capability-per-unit-time) goes through Claude
+        # Code's native --append-system-prompt: it's a framework-level
+        # constraint, not part of the task itself, so it belongs in the
+        # system channel rather than the user prompt. None (unlimited)
+        # yields None from time_budget_notice, so nothing is injected.
+        budget_notice = time_budget_notice(task.timeout_seconds)
         # Provider-prefixed models point the subprocess at a third-party
         # endpoint via its own env, leaving global settings.json untouched so
         # concurrent sessions don't interfere with each other. `--model` gets
@@ -151,6 +163,8 @@ class ClaudeCodeAdapter:
         # config when the scenario actually declared one.
         if mcp_config_path is not None:
             cmd += ["--mcp-config", str(mcp_config_path.resolve())]
+        if budget_notice:
+            cmd += ["--append-system-prompt", budget_notice]
 
         events_count = 0
         thinking_count = 0

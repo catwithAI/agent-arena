@@ -30,6 +30,7 @@ from .base import (
     AdapterRunInput,
     build_security_meta,
     prompt_context,
+    time_budget_notice,
 )
 from .token_usage import (
     estimate_tokens_from_event,
@@ -90,6 +91,17 @@ class SshClaudeCodeAdapter:
         prompt_text = self._render_prompt(task)
         (attempt_dir / "prompt.txt").write_text(prompt_text, encoding="utf-8")
 
+        # Time budget (probes capability-per-unit-time) goes through Claude
+        # Code's native --append-system-prompt on the remote CLI invocation,
+        # same as the local ClaudeCodeAdapter — it's a framework-level
+        # constraint, not part of the task. Written to its own file and
+        # `cat`'d in the remote command rather than interpolated as a
+        # literal argument, so its text is never parsed as shell syntax.
+        # None (unlimited) yields no notice and no extra upload/flag.
+        budget_notice = time_budget_notice(task.timeout_seconds)
+        if budget_notice:
+            (attempt_dir / "system_notice.txt").write_text(budget_notice, encoding="utf-8")
+
         mcp_config_path: Path | None = None
         if task.mcp_servers:
             mcp_config = self._build_mcp_config(task, self.project_path)
@@ -126,6 +138,7 @@ class SshClaudeCodeAdapter:
             upload_ok = await self._upload_files(
                 task, attempt_dir, mcp_server_path, remote_dir,
                 include_mcp_config=mcp_config_path is not None,
+                include_system_notice=budget_notice is not None,
             )
             if not upload_ok:
                 return AdapterResult(
@@ -154,10 +167,15 @@ class SshClaudeCodeAdapter:
                 f"--mcp-config {remote_dir}/mcp_config.json "
                 if mcp_config_path is not None else ""
             )
+            notice_arg = (
+                f'--append-system-prompt "$(cat {remote_dir}/system_notice.txt)" '
+                if budget_notice is not None else ""
+            )
             claude_cmd = (
                 f"cd {remote_dir} && cat prompt.txt | claude -p - "
                 f"--output-format stream-json --verbose "
                 f"{mcp_arg}"
+                f"{notice_arg}"
                 f"--dangerously-skip-permissions "
                 f"--max-turns 50"
             )
@@ -355,6 +373,7 @@ class SshClaudeCodeAdapter:
         remote_dir: str,
         *,
         include_mcp_config: bool,
+        include_system_notice: bool = False,
     ) -> bool:
         files = [
             (str(attempt_dir / "prompt.txt"), f"{remote_dir}/prompt.txt"),
@@ -365,6 +384,10 @@ class SshClaudeCodeAdapter:
                 (str(attempt_dir / "mcp_config.json"), f"{remote_dir}/mcp_config.json"),
                 (mcp_server_path, f"{remote_dir}/mcp_server.py"),
             ]
+        if include_system_notice:
+            files.append(
+                (str(attempt_dir / "system_notice.txt"), f"{remote_dir}/system_notice.txt")
+            )
         for local, remote in files:
             proc = await asyncio.create_subprocess_exec(
                 "sshpass", "-p", self.ssh_password,
