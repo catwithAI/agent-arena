@@ -123,6 +123,21 @@ class ClaudeCodeAdapter:
             provider = self.providers[model_ref.provider]
             subprocess_env["ANTHROPIC_BASE_URL"] = provider.base_url
             api_key = resolve_api_key(provider)
+            # Without this, a missing key just makes the CLI print an
+            # unhelpful "Not logged in · Please run /login" — fail fast with
+            # something actionable instead.
+            if api_key is None and provider.api_key_env:
+                return AdapterResult(
+                    attempt_id=task.attempt_id,
+                    status="auth_failed",
+                    error_code="provider_api_key_missing",
+                    error_message=(
+                        f"provider {model_ref.provider!r} is missing an API key: "
+                        f"env var {provider.api_key_env} is not set, and "
+                        f"agentlane.yaml model_providers.{model_ref.provider}.api_key "
+                        "is also empty"
+                    ),
+                )
             if api_key:
                 subprocess_env["ANTHROPIC_AUTH_TOKEN"] = api_key
                 subprocess_env.pop("ANTHROPIC_API_KEY", None)

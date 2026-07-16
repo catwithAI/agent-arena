@@ -19,6 +19,11 @@ class ModelProviderSection(BaseModel):
     kind: Literal["anthropic", "openai-chat", "openai-responses"] = "anthropic"
     base_url: str
     api_key_env: str | None = None
+    # Key filled in directly (agentlane.yaml is gitignored, so it's safe to
+    # put a real secret here). Resolution order lives in resolve_api_key:
+    # the env var wins when set, this is the fallback. Avoids "the process
+    # that spawned the backend forgot to export the key" surprises.
+    api_key: str | None = None
     custom_headers: str | None = None
     # codex only: which wire protocol the endpoint speaks.
     wire_api: Literal["chat", "responses"] = "responses"
@@ -57,6 +62,8 @@ def parse_model_ref(raw: str, providers: dict[str, ModelProviderSection]) -> Mod
 
 
 def resolve_api_key(provider: ModelProviderSection) -> str | None:
-    if not provider.api_key_env:
-        return None
-    return os.environ.get(provider.api_key_env)
+    if provider.api_key_env:
+        from_env = os.environ.get(provider.api_key_env)
+        if from_env:
+            return from_env
+    return provider.api_key

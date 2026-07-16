@@ -173,6 +173,21 @@ class CodexAdapter:
         if model_ref.provider is not None:
             provider = self.providers[model_ref.provider]
             api_key = resolve_api_key(provider)
+            # Without this, codex only reports "Missing environment variable"
+            # inside turn.failed — fail fast with something actionable and
+            # skip spawning the subprocess entirely.
+            if provider.api_key_env and api_key is None:
+                return AdapterResult(
+                    attempt_id=task.attempt_id,
+                    status="auth_failed",
+                    error_code="provider_api_key_missing",
+                    error_message=(
+                        f"provider {model_ref.provider!r} is missing an API key: "
+                        f"env var {provider.api_key_env} is not set, and "
+                        f"agentlane.yaml model_providers.{model_ref.provider}.api_key "
+                        "is also empty"
+                    ),
+                )
             if provider.api_key_env and api_key:
                 subprocess_env[provider.api_key_env] = api_key
 
