@@ -1,0 +1,31 @@
+name: edgebench-juliet
+type: coding
+category: coding
+# 这个场景主要测什么（前端「场景与标准」页展示）
+test_focus: "纯编程题：从零实现一个 C/C++ 静态漏洞分析器。给结构化的程序事实（facts），不给源码、不许调现成工具，考察 agent 自己写数据流/控制流推理代码、识别 6 类 CWE 漏洞、控假阳性并给出有效传播路径的能力。"
+description: EdgeBench Juliet 漏洞分析器 — 基于 NIST Juliet C/C++ 测试集的 facts 级静态漏洞分析，覆盖 CWE-121/122/190/476/416/78 六类漏洞（栈/堆缓冲区溢出、整数溢出、空指针解引用、释放后使用、命令注入）
+pass_threshold: 60
+
+# 运行前置（见 docs/env-prerequisites.md）
+prerequisites:
+  level: none                      # none | skill-source | office | compiler | media | judge
+  summary: "零特殊工具（bash + python3 评分，不编译 C++）。隐藏评测数据集 34MB facts.jsonl 已随仓库。"
+  requires:
+    - "python3"
+    - "bash"
+  on_missing: "无（数据集自带）"
+
+
+materials:
+  agent:
+    - path: materials/public
+      target: .
+
+entrypoints:
+  mcp:
+    enabled: false
+
+dimensions:
+  - name: hidden_score
+    weight: 100
+    description: 官方隐藏评分器打分（0-100）。用 agent 看不到的 723 条 hidden 标签评测：finding F1、负样本精度、进阶推理子集、source→sink 传播路径质量、性能。

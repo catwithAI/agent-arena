@@ -6,6 +6,10 @@ concurrently (or serially, for UIs that want to show one at a time) via
 
 Agent resolution is intentionally simple and open-ended:
 - "claude-code" / "codex" map to the reference adapters.
+- "ssh-claude-code" maps to `SshClaudeCodeAdapter` (backend/adapters/
+  ssh_claude_code.py), only when `settings.ssh_claude_code.ssh_host` is
+  configured — Claude Code run over SSH on a remote machine instead of a
+  local subprocess.
 - Anything else is looked up in `settings.custom_agents` and built into a
   `CustomCliAdapter` — this is the extension point for third-party agents,
   see backend/adapters/custom_cli.py.
@@ -14,15 +18,19 @@ Agent resolution is intentionally simple and open-ended:
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
 from . import runtime_state
-from .adapters.base import AdapterRunInput
+from .adapters.base import AdapterRunInput, McpServerSpec
 from .adapters.custom_cli import CustomCliAdapter, CustomCliConfig
 from .config import Settings
 from .db import _now_iso, _open_sync
+from .model_providers import parse_model_ref
 from .runner import run_attempt
+from .wire.lifecycle import CapturePreparationError, WireCaptureSession, capture_capabilities_for
+from .wire.policy import resolve_effective_policy
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +39,60 @@ _DEFAULT_MODELS = {
     "codex": "gpt-5",
 }
 
+# Wire capture only covers agents that run over plain HTTP+SSE with a
+# rewritable base URL (claude-code / codex). Anything plugged in via
+# CustomCliAdapter gets no wire source until it declares wire capabilities.
+_HTTP_PROXY_AGENTS = frozenset({"claude-code", "codex"})
+_MCP_TAP_AGENTS = frozenset({"claude-code", "codex"})
+
+
+def _build_wire_sources(
+    *,
+    agent_name: str,
+    model: str | None,
+    settings: Settings,
+    attempt_id: str,
+    env_name: str,
+    data_path: Any,
+    mcp_server_names: tuple[str, ...] = (),
+) -> list[Any]:
+    """Assemble the wire capture sources for this attempt:
+    - HttpProxySource: claude-code/codex on a named third-party provider.
+    - McpStdioSource: claude-code/codex, one per MCP server the scenario
+      actually declared. No declaration means no source — agent-lane never
+      injects an MCP server on its own.
+    """
+    sources: list[Any] = []
+    if agent_name in _HTTP_PROXY_AGENTS and model:
+        ref = parse_model_ref(model, settings.model_providers or {})
+        if ref.provider is not None:
+            from .wire.sources.http_proxy_source import HttpProxySource
+
+            sources.append(
+                HttpProxySource(
+                    attempt_id=attempt_id,
+                    provider=ref.provider,
+                    public_base_url=settings.lane.public_base_url,
+                )
+            )
+    if agent_name in _MCP_TAP_AGENTS and mcp_server_names:
+        from .wire.sources.mcp_stdio import McpStdioSource
+
+        for server_name in mcp_server_names:
+            sources.append(
+                McpStdioSource(
+                    attempt_id=attempt_id, env_name=env_name, data_path=data_path,
+                    server_name=server_name,
+                )
+            )
+    return sources
+
 
 def known_agents(settings: Settings) -> tuple[str, ...]:
-    return ("claude-code", "codex", *settings.custom_agents.keys())
+    agents = ("claude-code", "codex")
+    if settings.ssh_claude_code.ssh_host is not None:
+        agents = (*agents, "ssh-claude-code")
+    return (*agents, *settings.custom_agents.keys())
 
 
 def build_adapter(agent_name: str, settings: Settings, model: str | None = None) -> Any:
@@ -53,6 +112,20 @@ def build_adapter(agent_name: str, settings: Settings, model: str | None = None)
             project_path=Path(".").resolve(),
             model=model or _DEFAULT_MODELS["codex"],
             providers=settings.model_providers,
+        )
+
+    if agent_name == "ssh-claude-code":
+        ssh = settings.ssh_claude_code
+        if ssh.ssh_host is None:
+            return None
+        from .adapters.ssh_claude_code import SshClaudeCodeAdapter
+
+        return SshClaudeCodeAdapter(
+            ssh_host=ssh.ssh_host,
+            ssh_user=ssh.ssh_user,
+            ssh_password=ssh.ssh_password.get_secret_value() if ssh.ssh_password else "",
+            project_path=Path(".").resolve(),
+            max_budget_usd=ssh.max_budget_usd,
         )
 
     custom = settings.custom_agents.get(agent_name)
@@ -83,7 +156,7 @@ async def dispatch(
     task_id: str,
     task_prompt: str,
     task_context: dict[str, Any],
-    timeout_seconds: int,
+    timeout_seconds: int | None,
     env_name: str,
     session_token: str,
     model: str | None = None,
@@ -122,6 +195,73 @@ async def dispatch(
         _refresh_run_status(state.db_path, attempt_id)
         return
 
+    try:
+        mcp_servers = _mcp_server_specs(env)
+    except ValueError as exc:
+        from .runner import _finalize_no_score
+
+        logger.error("dispatch: invalid MCP entrypoint env=%s: %s", env_name, exc)
+        _finalize_no_score(
+            db_path=state.db_path,
+            attempt_id=attempt_id,
+            status="cli_error",
+            error_code="invalid_scene_mcp_entrypoint",
+            error_message=str(exc),
+            pass_threshold=int(env.meta.get("pass_threshold", 60)),
+        )
+        _refresh_run_status(state.db_path, attempt_id)
+        return
+
+    # Wire capture: prepare always runs before adapter.run(). With no source
+    # wired up (unknown agent, no named third-party provider) this is a
+    # no-op that returns a zero injection, so behavior is identical to
+    # before wire capture existed. Fail-open by default: if a source can't
+    # come up, the injection just stays empty rather than corrupting the
+    # adapter's env/base_url — the one fail-closed path is a strict source
+    # that must rewrite the transport and can't get ready, which is caught
+    # below.
+    protected_env_keys = frozenset(
+        p.api_key_env for p in (settings.model_providers or {}).values() if p.api_key_env
+    )
+    wire_sources = _build_wire_sources(
+        agent_name=agent_name,
+        model=model,
+        settings=settings,
+        attempt_id=attempt_id,
+        env_name=env_name,
+        data_path=state.data_path,
+        mcp_server_names=tuple(spec.name for spec in mcp_servers),
+    )
+    effective_policy = resolve_effective_policy(
+        server_max=settings.lane.wire_capture_max_policy,
+        run_requested=None,
+    )
+    capture = WireCaptureSession(
+        attempt_id=attempt_id,
+        data_path=state.data_path,
+        agent_name=agent_name,
+        sources=wire_sources,
+        adapter_capabilities=capture_capabilities_for(agent_name, adapter),
+        policy=effective_policy,
+        protected_env_keys=protected_env_keys,
+    )
+    try:
+        injection = await capture.prepare(phase="agent_run")
+    except CapturePreparationError as exc:
+        from .runner import _finalize_no_score
+
+        logger.error("dispatch: capture prepare failed attempt=%s: %s", attempt_id, exc)
+        _finalize_no_score(
+            db_path=state.db_path,
+            attempt_id=attempt_id,
+            status="capture_infrastructure_failed",
+            error_code="capture_preparation_failed",
+            error_message=str(exc),
+            pass_threshold=60,
+        )
+        _refresh_run_status(state.db_path, attempt_id)
+        return
+
     task = AdapterRunInput(
         attempt_id=attempt_id,
         task_id=task_id,
@@ -132,10 +272,53 @@ async def dispatch(
         env_skill_id=f"lane/{env_name}",
         session_token=session_token,
         env_base_url=settings.lane.public_base_url,
+        mcp_servers=mcp_servers,
+        wire_injection=injection,
     )
-    bound = _BoundAdapter(adapter=adapter, task=task, env=env, data_path=state.data_path)
-    await run_attempt(bound)
+    try:
+        bound = _BoundAdapter(adapter=adapter, task=task, env=env, data_path=state.data_path)
+        await run_attempt(bound, observer=capture)
+    except BaseException:
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            await capture.abort_before_or_during_run()
+        raise
     _refresh_run_status(state.db_path, attempt_id)
+
+
+def _mcp_server_specs(env: Any) -> tuple[McpServerSpec, ...]:
+    """Translate a scenario's declared `entrypoints.mcp` into adapter input.
+
+    This never infers MCP capability from what happens to sit in the env
+    directory — only an explicit, enabled declaration in meta.yaml counts.
+    """
+    entrypoints = (getattr(env, "meta", {}) or {}).get("entrypoints") or {}
+    raw = entrypoints.get("mcp")
+    if not isinstance(raw, dict) or not raw.get("enabled", False):
+        return ()
+    if raw.get("transport", "stdio") != "stdio":
+        raise ValueError(f"env {env.name}: only MCP stdio transport is currently supported")
+    command = raw.get("command")
+    if not isinstance(command, list) or not command or not all(
+        isinstance(part, str) and part for part in command
+    ):
+        raise ValueError(f"env {env.name}: entrypoints.mcp.command must be a non-empty string list")
+    name = raw.get("name") or f"lane-{env.name}"
+    if not isinstance(name, str) or re.fullmatch(r"[A-Za-z0-9_-]+", name) is None:
+        raise ValueError(
+            f"env {env.name}: entrypoints.mcp.name may only contain letters, digits, "
+            "underscores and hyphens"
+        )
+    project_root = Path(env.env_dir).resolve().parent.parent
+    return (
+        McpServerSpec(
+            name=name,
+            command=command[0],
+            args=tuple(command[1:]),
+            cwd=str(project_root),
+        ),
+    )
 
 
 def _mark_running(db_path: Path, attempt_id: str) -> None:

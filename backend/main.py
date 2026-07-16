@@ -44,9 +44,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         runtime_state.set(
             RuntimeState(settings=cfg, db=db, db_path=db_path, data_path=data_path, envs=envs)
         )
+
+        # Wire manifest recovery (backend/wire/recovery.py): only settles
+        # manifests left in-progress by an unclean shutdown; orthogonal to
+        # attempt-level recovery, failures never block startup.
+        try:
+            from .wire.recovery import recover_wire_manifests
+
+            wire_recovered = recover_wire_manifests(data_path, db_path)
+            if wire_recovered:
+                logger.warning("wire recovery handled %d manifest(s)", wire_recovered)
+        except Exception:
+            logger.exception("wire manifest recovery scan failed (ignored)")
+
+        # Shared httpx client for the reverse HTTP capture proxy.
+        from .wire.proxy_api import close_proxy_client, open_proxy_client
+
+        await open_proxy_client(app)
         try:
             yield
         finally:
+            await close_proxy_client(app)
             await db.close()
             runtime_state.clear()
 
@@ -90,4 +108,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(env_attempt_router)
     # Frontend-facing API mounts under /api.
     register_frontend_routes(app, prefix="/api")
+
+    # Wire observability read API (backend/wire/api.py): trace/manifest/
+    # trajectory/blob endpoints for the run detail view, mounted under /api
+    # alongside the rest of the frontend-facing surface.
+    from .wire.api import build_wire_router
+
+    app.include_router(build_wire_router(), prefix="/api")
+
+    # Reverse HTTP capture proxy (backend/wire/proxy_api.py): adapters inject
+    # this as the model provider base URL, so it must live at the fixed
+    # `/internal/wire-proxy/...` path the adapters construct — no /api prefix.
+    from .wire.proxy_api import build_proxy_router
+
+    app.include_router(build_proxy_router())
     return app

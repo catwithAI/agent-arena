@@ -13,6 +13,9 @@ export function Submit() {
   const [prompt, setPrompt] = useState("");
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [model, setModel] = useState("");
+  // Task timeout in minutes; empty = unlimited (no time-budget notice sent
+  // to the agent, no deadline enforced by the adapter).
+  const [timeoutMinutes, setTimeoutMinutes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,6 +54,7 @@ export function Submit() {
       if (taskId) body.task_id = taskId;
       else body.prompt = prompt;
       if (model.trim()) body.model = model.trim();
+      body.timeout_seconds = timeoutMinutes.trim() === "" ? null : Math.round(Number(timeoutMinutes) * 60);
       const resp = await api.createRun(body);
       navigate(`/runs/${resp.run_id}`);
     } catch (e) {
@@ -114,6 +118,21 @@ export function Submit() {
 
         <label>Model override (optional, applies to all selected agents)</label>
         <input type="text" value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. sonnet, gpt-5" />
+
+        <label>Task timeout (minutes)</label>
+        <input
+          type="number"
+          min={0}
+          step={0.5}
+          value={timeoutMinutes}
+          onChange={(e) => setTimeoutMinutes(e.target.value)}
+          placeholder="leave blank = unlimited"
+        />
+        <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>
+          {timeoutMinutes.trim() === ""
+            ? "No time limit is told to the agent, and the run has no overall deadline."
+            : `The agent is told it has ${timeoutMinutes} minute(s) and the run is force-stopped after that.`}
+        </p>
 
         {error && <p className="error-box">{error}</p>}
 

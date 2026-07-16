@@ -1,0 +1,1976 @@
+{
+  "$defs": {
+    "AggregateUsageEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_schema_version": {
+          "const": "lane-wire-evidence-v1",
+          "default": "lane-wire-evidence-v1",
+          "title": "Evidence Schema Version",
+          "type": "string"
+        },
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "attempt_id": {
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "attempt_setup",
+            "agent_run",
+            "verification",
+            "artifact_collection",
+            "attempt_cleanup",
+            "unknown"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/EvidenceSource"
+        },
+        "producer": {
+          "$ref": "#/$defs/EvidenceProducer"
+        },
+        "time": {
+          "$ref": "#/$defs/EvidenceTime"
+        },
+        "raw_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceRawRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "correlation_hints": {
+          "$ref": "#/$defs/CorrelationHints"
+        },
+        "capabilities": {
+          "additionalProperties": true,
+          "title": "Capabilities",
+          "type": "object"
+        },
+        "redaction": {
+          "$ref": "#/$defs/EvidenceRedaction"
+        },
+        "errors": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "title": "Extensions",
+          "type": "object"
+        },
+        "evidence_type": {
+          "const": "aggregate_usage",
+          "default": "aggregate_usage",
+          "title": "Evidence Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/AggregateUsagePayload"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "attempt_id",
+        "phase",
+        "source",
+        "producer",
+        "time",
+        "raw_ref",
+        "correlation_hints",
+        "capabilities",
+        "redaction",
+        "errors",
+        "extensions",
+        "payload"
+      ],
+      "title": "AggregateUsageEvidence",
+      "type": "object"
+    },
+    "AggregateUsagePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scope"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UsagePayload"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "producer_event_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Producer Event Type"
+        }
+      },
+      "required": [
+        "scope",
+        "usage",
+        "producer_event_type"
+      ],
+      "title": "AggregateUsagePayload",
+      "type": "object"
+    },
+    "CaptureEventEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_schema_version": {
+          "const": "lane-wire-evidence-v1",
+          "default": "lane-wire-evidence-v1",
+          "title": "Evidence Schema Version",
+          "type": "string"
+        },
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "attempt_id": {
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "attempt_setup",
+            "agent_run",
+            "verification",
+            "artifact_collection",
+            "attempt_cleanup",
+            "unknown"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/EvidenceSource"
+        },
+        "producer": {
+          "$ref": "#/$defs/EvidenceProducer"
+        },
+        "time": {
+          "$ref": "#/$defs/EvidenceTime"
+        },
+        "raw_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceRawRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "correlation_hints": {
+          "$ref": "#/$defs/CorrelationHints"
+        },
+        "capabilities": {
+          "additionalProperties": true,
+          "title": "Capabilities",
+          "type": "object"
+        },
+        "redaction": {
+          "$ref": "#/$defs/EvidenceRedaction"
+        },
+        "errors": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "title": "Extensions",
+          "type": "object"
+        },
+        "evidence_type": {
+          "const": "capture_event",
+          "default": "capture_event",
+          "title": "Evidence Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/CaptureEventPayload"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "attempt_id",
+        "phase",
+        "source",
+        "producer",
+        "time",
+        "raw_ref",
+        "correlation_hints",
+        "capabilities",
+        "redaction",
+        "errors",
+        "extensions",
+        "payload"
+      ],
+      "title": "CaptureEventEvidence",
+      "type": "object"
+    },
+    "CaptureEventPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "enum": [
+            "start",
+            "ready",
+            "phase_change",
+            "drop",
+            "error",
+            "stop",
+            "finalize"
+          ],
+          "title": "Event",
+          "type": "string"
+        },
+        "source_instance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Instance"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Status"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason Code"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message"
+        },
+        "counters": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Counters"
+        },
+        "effective_capabilities": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Effective Capabilities"
+        }
+      },
+      "required": [
+        "event",
+        "source_instance",
+        "status",
+        "reason_code",
+        "message",
+        "counters",
+        "effective_capabilities"
+      ],
+      "title": "CaptureEventPayload",
+      "type": "object"
+    },
+    "CompactionHintEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_schema_version": {
+          "const": "lane-wire-evidence-v1",
+          "default": "lane-wire-evidence-v1",
+          "title": "Evidence Schema Version",
+          "type": "string"
+        },
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "attempt_id": {
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "attempt_setup",
+            "agent_run",
+            "verification",
+            "artifact_collection",
+            "attempt_cleanup",
+            "unknown"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/EvidenceSource"
+        },
+        "producer": {
+          "$ref": "#/$defs/EvidenceProducer"
+        },
+        "time": {
+          "$ref": "#/$defs/EvidenceTime"
+        },
+        "raw_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceRawRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "correlation_hints": {
+          "$ref": "#/$defs/CorrelationHints"
+        },
+        "capabilities": {
+          "additionalProperties": true,
+          "title": "Capabilities",
+          "type": "object"
+        },
+        "redaction": {
+          "$ref": "#/$defs/EvidenceRedaction"
+        },
+        "errors": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "title": "Extensions",
+          "type": "object"
+        },
+        "evidence_type": {
+          "const": "compaction_hint",
+          "default": "compaction_hint",
+          "title": "Evidence Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/CompactionHintPayload"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "attempt_id",
+        "phase",
+        "source",
+        "producer",
+        "time",
+        "raw_ref",
+        "correlation_hints",
+        "capabilities",
+        "redaction",
+        "errors",
+        "extensions",
+        "payload"
+      ],
+      "title": "CompactionHintEvidence",
+      "type": "object"
+    },
+    "CompactionHintPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "producer_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Producer Call Id"
+        },
+        "before_anchor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Before Anchor"
+        },
+        "after_anchor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "After Anchor"
+        },
+        "strategy": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Strategy"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confidence"
+        }
+      },
+      "required": [
+        "producer_call_id",
+        "before_anchor",
+        "after_anchor",
+        "strategy",
+        "confidence"
+      ],
+      "title": "CompactionHintPayload",
+      "type": "object"
+    },
+    "CorrelationHints": {
+      "additionalProperties": false,
+      "properties": {
+        "producer_session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Producer Session Id"
+        },
+        "producer_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Producer Call Id"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request Id"
+        },
+        "provider_response_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Response Id"
+        },
+        "jsonrpc_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Jsonrpc Id"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "sequence": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence"
+        }
+      },
+      "title": "CorrelationHints",
+      "type": "object"
+    },
+    "EvidenceProducer": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        },
+        "event_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event Id"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "EvidenceProducer",
+      "type": "object"
+    },
+    "EvidenceRawRef": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "file": {
+          "title": "File",
+          "type": "string"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        }
+      },
+      "required": [
+        "kind",
+        "file"
+      ],
+      "title": "EvidenceRawRef",
+      "type": "object"
+    },
+    "EvidenceRedaction": {
+      "additionalProperties": false,
+      "properties": {
+        "policy": {
+          "enum": [
+            "off",
+            "metadata",
+            "parsed",
+            "full"
+          ],
+          "title": "Policy",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "applied",
+            "skipped",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "hash_algorithm": {
+          "anyOf": [
+            {
+              "const": "sha256",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hash Algorithm"
+        },
+        "hash_domain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hash Domain"
+        }
+      },
+      "required": [
+        "policy",
+        "status"
+      ],
+      "title": "EvidenceRedaction",
+      "type": "object"
+    },
+    "EvidenceSource": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "instance": {
+          "title": "Instance",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "kind",
+        "instance"
+      ],
+      "title": "EvidenceSource",
+      "type": "object"
+    },
+    "EvidenceTime": {
+      "additionalProperties": false,
+      "properties": {
+        "observed_at": {
+          "title": "Observed At",
+          "type": "string"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished At"
+        }
+      },
+      "required": [
+        "observed_at"
+      ],
+      "title": "EvidenceTime",
+      "type": "object"
+    },
+    "HttpExchangeEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_schema_version": {
+          "const": "lane-wire-evidence-v1",
+          "default": "lane-wire-evidence-v1",
+          "title": "Evidence Schema Version",
+          "type": "string"
+        },
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "attempt_id": {
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "attempt_setup",
+            "agent_run",
+            "verification",
+            "artifact_collection",
+            "attempt_cleanup",
+            "unknown"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/EvidenceSource"
+        },
+        "producer": {
+          "$ref": "#/$defs/EvidenceProducer"
+        },
+        "time": {
+          "$ref": "#/$defs/EvidenceTime"
+        },
+        "raw_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceRawRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "correlation_hints": {
+          "$ref": "#/$defs/CorrelationHints"
+        },
+        "capabilities": {
+          "additionalProperties": true,
+          "title": "Capabilities",
+          "type": "object"
+        },
+        "redaction": {
+          "$ref": "#/$defs/EvidenceRedaction"
+        },
+        "errors": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "title": "Extensions",
+          "type": "object"
+        },
+        "evidence_type": {
+          "const": "http_exchange",
+          "default": "http_exchange",
+          "title": "Evidence Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/HttpExchangePayload"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "attempt_id",
+        "phase",
+        "source",
+        "producer",
+        "time",
+        "raw_ref",
+        "correlation_hints",
+        "capabilities",
+        "redaction",
+        "errors",
+        "extensions",
+        "payload"
+      ],
+      "title": "HttpExchangeEvidence",
+      "type": "object"
+    },
+    "HttpExchangePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "direction": {
+          "anyOf": [
+            {
+              "enum": [
+                "inbound",
+                "outbound"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Direction"
+        },
+        "method": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Method"
+        },
+        "scheme": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scheme"
+        },
+        "authority": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Authority"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Path"
+        },
+        "status_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Status Code"
+        },
+        "request_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Request Bytes"
+        },
+        "response_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Response Bytes"
+        },
+        "streamed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Streamed"
+        },
+        "partial": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Partial"
+        },
+        "timing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimingPayload"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "method",
+        "scheme",
+        "authority",
+        "path",
+        "status_code",
+        "request_bytes",
+        "response_bytes",
+        "streamed",
+        "partial",
+        "timing"
+      ],
+      "title": "HttpExchangePayload",
+      "type": "object"
+    },
+    "McpFrameEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_schema_version": {
+          "const": "lane-wire-evidence-v1",
+          "default": "lane-wire-evidence-v1",
+          "title": "Evidence Schema Version",
+          "type": "string"
+        },
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "attempt_id": {
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "attempt_setup",
+            "agent_run",
+            "verification",
+            "artifact_collection",
+            "attempt_cleanup",
+            "unknown"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/EvidenceSource"
+        },
+        "producer": {
+          "$ref": "#/$defs/EvidenceProducer"
+        },
+        "time": {
+          "$ref": "#/$defs/EvidenceTime"
+        },
+        "raw_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceRawRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "correlation_hints": {
+          "$ref": "#/$defs/CorrelationHints"
+        },
+        "capabilities": {
+          "additionalProperties": true,
+          "title": "Capabilities",
+          "type": "object"
+        },
+        "redaction": {
+          "$ref": "#/$defs/EvidenceRedaction"
+        },
+        "errors": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "title": "Extensions",
+          "type": "object"
+        },
+        "evidence_type": {
+          "const": "mcp_frame",
+          "default": "mcp_frame",
+          "title": "Evidence Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/McpFramePayload"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "attempt_id",
+        "phase",
+        "source",
+        "producer",
+        "time",
+        "raw_ref",
+        "correlation_hints",
+        "capabilities",
+        "redaction",
+        "errors",
+        "extensions",
+        "payload"
+      ],
+      "title": "McpFrameEvidence",
+      "type": "object"
+    },
+    "McpFramePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "direction": {
+          "anyOf": [
+            {
+              "enum": [
+                "client-to-server",
+                "server-to-client"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Direction"
+        },
+        "jsonrpc_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Jsonrpc Id"
+        },
+        "message_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "request",
+                "response",
+                "notification"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message Kind"
+        },
+        "method": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Method"
+        },
+        "tool_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tool Name"
+        },
+        "bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Bytes"
+        },
+        "is_error": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Is Error"
+        },
+        "truncated": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Truncated"
+        }
+      },
+      "required": [
+        "direction",
+        "jsonrpc_id",
+        "message_kind",
+        "method",
+        "tool_name",
+        "bytes",
+        "is_error",
+        "truncated"
+      ],
+      "title": "McpFramePayload",
+      "type": "object"
+    },
+    "NativeLlmCallEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_schema_version": {
+          "const": "lane-wire-evidence-v1",
+          "default": "lane-wire-evidence-v1",
+          "title": "Evidence Schema Version",
+          "type": "string"
+        },
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "attempt_id": {
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "attempt_setup",
+            "agent_run",
+            "verification",
+            "artifact_collection",
+            "attempt_cleanup",
+            "unknown"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/EvidenceSource"
+        },
+        "producer": {
+          "$ref": "#/$defs/EvidenceProducer"
+        },
+        "time": {
+          "$ref": "#/$defs/EvidenceTime"
+        },
+        "raw_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceRawRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "correlation_hints": {
+          "$ref": "#/$defs/CorrelationHints"
+        },
+        "capabilities": {
+          "additionalProperties": true,
+          "title": "Capabilities",
+          "type": "object"
+        },
+        "redaction": {
+          "$ref": "#/$defs/EvidenceRedaction"
+        },
+        "errors": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "title": "Extensions",
+          "type": "object"
+        },
+        "evidence_type": {
+          "const": "native_llm_call",
+          "default": "native_llm_call",
+          "title": "Evidence Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/NativeLlmCallPayload"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "attempt_id",
+        "phase",
+        "source",
+        "producer",
+        "time",
+        "raw_ref",
+        "correlation_hints",
+        "capabilities",
+        "redaction",
+        "errors",
+        "extensions",
+        "payload"
+      ],
+      "title": "NativeLlmCallEvidence",
+      "type": "object"
+    },
+    "NativeLlmCallPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "producer_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Producer Call Id"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model"
+        },
+        "call_role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Call Role"
+        },
+        "request_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "response_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResponseSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UsagePayload"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "finish_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Finish Reason"
+        }
+      },
+      "required": [
+        "producer_call_id",
+        "model",
+        "call_role",
+        "request_summary",
+        "response_summary",
+        "usage",
+        "finish_reason"
+      ],
+      "title": "NativeLlmCallPayload",
+      "type": "object"
+    },
+    "RequestSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model"
+        },
+        "message_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message Count"
+        },
+        "message_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message Bytes"
+        },
+        "system_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "System Hash"
+        },
+        "messages_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Messages Hash"
+        },
+        "tools_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tools Hash"
+        },
+        "hash_domain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hash Domain"
+        }
+      },
+      "required": [
+        "model",
+        "message_count",
+        "message_bytes",
+        "system_hash",
+        "messages_hash",
+        "tools_hash",
+        "hash_domain"
+      ],
+      "title": "RequestSummary",
+      "type": "object"
+    },
+    "ResponseSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content Hash"
+        },
+        "hash_domain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hash Domain"
+        },
+        "message_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message Bytes"
+        },
+        "output_blocks": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Output Blocks"
+        }
+      },
+      "required": [
+        "content_hash",
+        "hash_domain",
+        "message_bytes",
+        "output_blocks"
+      ],
+      "title": "ResponseSummary",
+      "type": "object"
+    },
+    "StreamChunkEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_schema_version": {
+          "const": "lane-wire-evidence-v1",
+          "default": "lane-wire-evidence-v1",
+          "title": "Evidence Schema Version",
+          "type": "string"
+        },
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "attempt_id": {
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "attempt_setup",
+            "agent_run",
+            "verification",
+            "artifact_collection",
+            "attempt_cleanup",
+            "unknown"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/EvidenceSource"
+        },
+        "producer": {
+          "$ref": "#/$defs/EvidenceProducer"
+        },
+        "time": {
+          "$ref": "#/$defs/EvidenceTime"
+        },
+        "raw_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceRawRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "correlation_hints": {
+          "$ref": "#/$defs/CorrelationHints"
+        },
+        "capabilities": {
+          "additionalProperties": true,
+          "title": "Capabilities",
+          "type": "object"
+        },
+        "redaction": {
+          "$ref": "#/$defs/EvidenceRedaction"
+        },
+        "errors": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "title": "Extensions",
+          "type": "object"
+        },
+        "evidence_type": {
+          "const": "stream_chunk",
+          "default": "stream_chunk",
+          "title": "Evidence Type",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/StreamChunkPayload"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "attempt_id",
+        "phase",
+        "source",
+        "producer",
+        "time",
+        "raw_ref",
+        "correlation_hints",
+        "capabilities",
+        "redaction",
+        "errors",
+        "extensions",
+        "payload"
+      ],
+      "title": "StreamChunkEvidence",
+      "type": "object"
+    },
+    "StreamChunkPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "hop_anchor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hop Anchor"
+        },
+        "sequence": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sequence"
+        },
+        "relative_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Relative Ms"
+        },
+        "event_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Event Type"
+        },
+        "bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Bytes"
+        },
+        "content_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content Hash"
+        },
+        "terminal": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Terminal"
+        },
+        "dropped_before": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dropped Before"
+        }
+      },
+      "required": [
+        "hop_anchor",
+        "sequence",
+        "relative_ms",
+        "event_type",
+        "bytes",
+        "content_hash",
+        "terminal",
+        "dropped_before"
+      ],
+      "title": "StreamChunkPayload",
+      "type": "object"
+    },
+    "TimingPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Started At"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Finished At"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Duration Ms"
+        },
+        "ttft_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ttft Ms"
+        }
+      },
+      "required": [
+        "started_at",
+        "finished_at",
+        "duration_ms",
+        "ttft_ms"
+      ],
+      "title": "TimingPayload",
+      "type": "object"
+    },
+    "UsagePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "input_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Input Tokens"
+        },
+        "output_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Output Tokens"
+        },
+        "cache_read_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cache Read Tokens"
+        },
+        "cache_write_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cache Write Tokens"
+        },
+        "reasoning_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reasoning Tokens"
+        },
+        "estimated": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Estimated"
+        }
+      },
+      "required": [
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "reasoning_tokens",
+        "estimated"
+      ],
+      "title": "UsagePayload",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "aggregate_usage": "#/$defs/AggregateUsageEvidence",
+      "capture_event": "#/$defs/CaptureEventEvidence",
+      "compaction_hint": "#/$defs/CompactionHintEvidence",
+      "http_exchange": "#/$defs/HttpExchangeEvidence",
+      "mcp_frame": "#/$defs/McpFrameEvidence",
+      "native_llm_call": "#/$defs/NativeLlmCallEvidence",
+      "stream_chunk": "#/$defs/StreamChunkEvidence"
+    },
+    "propertyName": "evidence_type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/NativeLlmCallEvidence"
+    },
+    {
+      "$ref": "#/$defs/AggregateUsageEvidence"
+    },
+    {
+      "$ref": "#/$defs/HttpExchangeEvidence"
+    },
+    {
+      "$ref": "#/$defs/StreamChunkEvidence"
+    },
+    {
+      "$ref": "#/$defs/McpFrameEvidence"
+    },
+    {
+      "$ref": "#/$defs/CaptureEventEvidence"
+    },
+    {
+      "$ref": "#/$defs/CompactionHintEvidence"
+    }
+  ]
+}

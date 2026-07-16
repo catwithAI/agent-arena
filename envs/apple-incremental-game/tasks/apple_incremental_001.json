@@ -1,0 +1,21 @@
+{
+  "id": "apple_incremental_001",
+  "env_name": "apple-incremental-game",
+  "prompt": "Solve the Apple Incremental Game optimization problem. Write your final Python 3 submission to `solution.py` in the current working directory. The program must read one case from stdin and print exactly 500 actions: either `i j` to strengthen machine j at level i, or `-1` to do nothing. A starter `solution.py`, the full problem statement in `README.md`, and local testing tools under `tools/` are provided. Use `./tools/bin/gen <seed> > input.txt`, `python3 solution.py < input.txt > output.txt`, and `./tools/bin/tester input.txt output.txt` for local testing. Final judging runs your `solution.py` on 50 hidden fixed cases and sums the official tester scores.",
+  "context": {
+    "problem": "There are N=10 machine IDs and L=4 levels. Each turn, you may strengthen one machine by paying C[i][j] * (P[i][j] + 1), or do nothing. Then level 0 machines produce apples, and higher-level machines produce lower-level machine counts. Initial machine counts are all 1, powers are all 0, initial apples K=1, and T=500.",
+    "scoring": "For each hidden case, if output is valid, score = round(100000 * log2(S)), where S is final apples after 500 turns. Final score is the sum over 50 hidden cases.",
+    "limits": {
+      "language": "Python 3.10+",
+      "per_case_time_seconds": 30,
+      "memory": "1 GB"
+    },
+    "final_file": "solution.py"
+  },
+  "constraints": {
+    "expected_files": ["solution.py"],
+    "hidden_cases": 50,
+    "do_not_assume_case_files_are_visible": true
+  },
+  "timeout_seconds": 43200
+}

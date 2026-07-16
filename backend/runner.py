@@ -38,7 +38,7 @@ from typing import Any, Protocol
 
 from . import runtime_state
 from .db import _now_iso, _open_sync, hash_session_token, new_session_token
-from .evaluator import evaluate, write_scores_sync
+from .evaluator import evaluate, write_scores_sync, write_security_summary_sync
 from .models import AttemptModel
 
 logger = logging.getLogger(__name__)
@@ -157,13 +157,34 @@ _ADAPTER_TERMINAL_NO_SCORE = frozenset(
 )
 
 
-async def run_attempt(adapter: _AdapterLike) -> RunAttemptResult:
+async def run_attempt(adapter: _AdapterLike, *, observer: Any | None = None) -> RunAttemptResult:
     """Full lifecycle for a single attempt. Every failure mode is captured
-    into a terminal status; this never raises."""
+    into a terminal status; this never raises.
+
+    `observer` is the wire capture lifecycle hook (backend/wire/lifecycle.py:
+    `WireCaptureSession`) — advances capture phases around the adapter run
+    and finalizes the wire manifest. Defaults to a no-op observer so callers
+    that don't care about wire capture see identical behavior to before it
+    existed.
+    """
+    from .wire.lifecycle import NullAttemptObserver
+
+    observer = observer or NullAttemptObserver()
+    try:
+        return await _run_attempt_inner(adapter, observer)
+    finally:
+        try:
+            await observer.attempt_end()
+        except Exception:
+            logger.exception("wire observer.attempt_end fail-open")
+
+
+async def _run_attempt_inner(adapter: _AdapterLike, observer: Any) -> RunAttemptResult:
     state = runtime_state.get()
 
     try:
-        adapter_result = await adapter.run()
+        async with observer.phase("agent_run"):
+            adapter_result = await adapter.run()
     except Exception as exc:
         logger.exception("adapter.run() crashed")
         return _finalize_no_score(
@@ -174,6 +195,10 @@ async def run_attempt(adapter: _AdapterLike) -> RunAttemptResult:
             error_message=str(exc),
             pass_threshold=60,
         )
+    try:
+        await observer.agent_result(adapter_result)
+    except Exception:
+        logger.exception("wire observer.agent_result fail-open")
 
     attempt_id = adapter_result.attempt_id
     adapter_status = adapter_result.status
@@ -247,6 +272,7 @@ async def run_attempt(adapter: _AdapterLike) -> RunAttemptResult:
             env=env,
             data_path=state.data_path,
             scorer=env.scorer,
+            security_meta=security_meta,
         )
     except Exception as exc:
         logger.exception("scorer raised for attempt=%s", attempt_id)
@@ -263,10 +289,11 @@ async def run_attempt(adapter: _AdapterLike) -> RunAttemptResult:
     final_status = "completed" if outcome.passed else "gave_up"
     await asyncio.to_thread(write_scores_sync, state.db_path, attempt_id, outcome.scores)
     await asyncio.to_thread(
-        _write_execution_meta_sync,
+        _write_security_columns_sync,
         state.db_path,
         attempt_id,
         security_meta,
+        outcome.security,
     )
     await asyncio.to_thread(
         _finalize_with_score_sync,
@@ -299,18 +326,27 @@ def _count_tool_calls(data_path: Path, attempt_id: str) -> int:
         return sum(1 for line in fp if line.strip())
 
 
-def _write_execution_meta_sync(db_path: Path, attempt_id: str, execution_meta: dict) -> None:
+def _write_security_columns_sync(
+    db_path: Path,
+    attempt_id: str,
+    security_meta: dict,
+    security_summary: dict | None,
+) -> None:
+    """Writes the execution-context snapshot (locus/permission_mode/
+    workspace_root) plus the security summary columns."""
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE attempts SET execution_locus=?, permission_mode=?, workspace_root=? WHERE id=?",
+            "UPDATE attempts SET execution_locus=?, permission_mode=?, "
+            "workspace_root=? WHERE id=?",
             (
-                execution_meta.get("execution_locus"),
-                execution_meta.get("permission_mode"),
-                execution_meta.get("workspace_root"),
+                security_meta.get("execution_locus"),
+                security_meta.get("permission_mode"),
+                security_meta.get("workspace_root"),
                 attempt_id,
             ),
         )
         conn.commit()
+    write_security_summary_sync(db_path, attempt_id, security_summary)
 
 
 def _fetch_attempt_and_task_sync(db_path: Path, attempt_id: str) -> tuple[dict | None, dict | None]:

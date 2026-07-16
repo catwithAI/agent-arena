@@ -19,9 +19,32 @@ class ModelProviderSection(BaseModel):
     kind: Literal["anthropic", "openai-chat", "openai-responses"] = "anthropic"
     base_url: str
     api_key_env: str | None = None
+    # Key filled in directly (agentlane.yaml is gitignored, so it's safe to
+    # put a real secret here). Resolution order lives in resolve_api_key:
+    # the env var wins when set, this is the fallback. Avoids "the process
+    # that spawned the backend forgot to export the key" surprises.
+    api_key: str | None = None
     custom_headers: str | None = None
     # codex only: which wire protocol the endpoint speaks.
     wire_api: Literal["chat", "responses"] = "responses"
+    # Auth header style (claude-code only): bearer sends
+    # `Authorization: Bearer <key>` (ANTHROPIC_AUTH_TOKEN), api-key sends
+    # `x-api-key: <key>` (ANTHROPIC_API_KEY). None -> default to bearer; most
+    # gateways only accept one of the two and they're mutually exclusive, no
+    # value rewriting happens between them.
+    auth_mode: Literal["bearer", "api-key"] | None = None
+
+    def effective_auth_mode(self) -> Literal["bearer", "api-key"]:
+        return self.auth_mode or "bearer"
+
+    def wire_protocol(self) -> str:
+        """Maps `kind` to the wire-layer protocol vocabulary consumed by
+        `backend/wire/sources/parse.py` (backend/wire/sources/parse.py:34-36)."""
+        return {
+            "anthropic": "anthropic-messages",
+            "openai-chat": "openai-chat-completions",
+            "openai-responses": "openai-responses",
+        }[self.kind]
 
 
 @dataclass
@@ -39,6 +62,8 @@ def parse_model_ref(raw: str, providers: dict[str, ModelProviderSection]) -> Mod
 
 
 def resolve_api_key(provider: ModelProviderSection) -> str | None:
-    if not provider.api_key_env:
-        return None
-    return os.environ.get(provider.api_key_env)
+    if provider.api_key_env:
+        from_env = os.environ.get(provider.api_key_env)
+        if from_env:
+            return from_env
+    return provider.api_key

@@ -1,0 +1,25 @@
+name: gdpval-prepaid-amortization-official
+type: coding
+category: gdpval-control
+test_focus: "通过独立 LLM judge 按 GDPval 官方 rubric 逐项评估 Excel 交付物"
+description: "保留官方任务、源材料、专家参考和完整 rubric；Judge 调用 Anthropic API 检查 Agent workbook 并逐项给分。"
+pass_threshold: 70
+
+# 运行前置（见 docs/env-prerequisites.md）
+prerequisites:
+  level: judge                     # none | skill-source | office | compiler | media | judge
+  summary: "需要可访问的 Anthropic API 检查 Agent Excel、源材料和专家工作簿；参考文件均随 env 提供。"
+  requires:
+    - "ANTHROPIC_API_KEY 环境变量（或 agentlane.yaml 配置的等效 judge key）"
+    - "llm_judge.model，默认使用 Anthropic 的当前 Claude 模型"
+    - "Judge 侧的 Excel 工作簿读取能力（建议 Python openpyxl）"
+  on_missing: "Judge 未配置或无法读取工作簿 → official_rubric_judge=0。"
+
+entrypoints:
+  mcp:
+    enabled: false
+
+dimensions:
+  - name: official_rubric_judge
+    weight: 100
+    description: "独立 LLM judge 对官方 56 条 rubric 严格二元评分（满分或零分，原始总分 95）后归一化为 100 分"

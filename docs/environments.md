@@ -44,6 +44,15 @@ Weights determine the aggregation of `scorer.py`'s output into
 `score_total` (weighted average, 0-100). If all weights are 0/missing, a
 simple average is used instead.
 
+`entrypoints` is the single source of truth for what tool capability an
+agent gets — the mere presence of `mcp_server.py` in the directory does not
+enable it. With `entrypoints.mcp.enabled: false` (or the key missing
+entirely), the dispatcher generates no MCP config, starts no capture tap,
+and adds no MCP-related text to the prompt, regardless of what files exist
+on disk. `command` must be the scenario's actual, complete launch command
+(argv list); the adapter runs it verbatim and never tries to guess or
+reconstruct it from `env_name`.
+
 ## Tools (`core.py`)
 
 Only needed if `type: skill`. Decorate plain functions with `@env_tool`;
@@ -106,6 +115,18 @@ run against N hidden fixtures, normalize to 0-100).
 `context` is rendered into the agent's prompt (minus internal/uploaded-file
 bookkeeping, which adapters render separately); `constraints` is opaque to
 the framework and read directly by your `scorer.py`.
+
+`timeout_seconds` is the time budget for the attempt. A positive value is
+both enforced by the adapter (`asyncio.wait_for`, hard-killing the CLI
+subprocess once it elapses) and told to the agent up front — every adapter
+injects the same notice text (`backend/adapters/base.time_budget_notice`)
+so the comparison across agents stays fair, nudging the agent to produce a
+submittable result quickly and spend any remaining time iterating. When
+creating a run via `POST /api/runs`, this field also accepts `null`, which
+means *unlimited*: no time-budget notice is injected and the adapter
+enforces no overall deadline. Omitting the field entirely keeps the
+existing default (1000s) rather than switching to unlimited, so callers
+that don't know about this option see no behavior change.
 
 ## Reference examples
 

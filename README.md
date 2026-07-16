@@ -27,6 +27,15 @@ Open the frontend (default `http://127.0.0.1:5173`), pick an environment,
 select the agents you have installed (`claude-code`/`codex` must be on
 `PATH`), and run.
 
+To route claude-code/codex through a third-party model provider (see
+`model_providers` in `agentlane.yaml.example`), make sure its API key is
+available before starting the backend — either export the env var named by
+`api_key_env` (`cp .env.example .env`, fill it in, then `source .env`), or
+fill in the provider's `api_key` field directly in `agentlane.yaml` (it's
+gitignored). If neither is set for a provider a run references, the attempt
+fails immediately with a clear `provider_api_key_missing` error instead of a
+confusing CLI login error.
+
 ## Included environments
 
 - **order-desk** — a tool-using environment: search a mock book catalog and

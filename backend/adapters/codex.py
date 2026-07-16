@@ -12,7 +12,14 @@ from pathlib import Path
 from typing import Any
 
 from ..model_providers import ModelProviderSection, ModelRef, parse_model_ref, resolve_api_key
-from .base import AdapterResult, AdapterRunInput, build_security_meta, prompt_context
+from ..wire.injection import WireInjection
+from .base import (
+    AdapterResult,
+    AdapterRunInput,
+    build_security_meta,
+    prompt_context,
+    time_budget_notice,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,20 +36,50 @@ class CodexAdapter:
         self.project_path = str(Path(project_path).resolve())
         self.providers = providers or {}
 
-    def _provider_cli_args(self, model_ref: ModelRef) -> list[str]:
+    @property
+    def wire_capture_capabilities(self) -> dict[str, Any]:
+        """Wire injection consumption capability declaration (lifecycle uses
+        this before the agent starts to filter/drop what this adapter can't
+        consume). Codex has no static provider header channel, so
+        llm_headers stays False."""
+        return {
+            "process_env": True,
+            "llm_base_url": True,
+            "llm_headers": False,
+            "mcp_rewrites": True,
+        }
+
+    def _provider_cli_args(self, model_ref: ModelRef, injection: WireInjection) -> list[str]:
         """Provider-prefixed models are injected as a one-shot `-c` override
-        naming a provider — never touches the user's global config.toml."""
+        naming a provider — never touches the user's global config.toml.
+
+        Wire injection consumption point: injection.llm_base_url overrides
+        this run's model_providers.<id>.base_url."""
         if model_ref.provider is None:
             return ["-m", model_ref.model]
         p = self.providers[model_ref.provider]
         name = model_ref.provider
+        base_url = (
+            injection.llm_base_url if injection.enabled and injection.llm_base_url else p.base_url
+        )
         args = [
             "-c", f'model_providers.{name}.name="{name}"',
-            "-c", f'model_providers.{name}.base_url="{p.base_url}"',
+            "-c", f'model_providers.{name}.base_url="{base_url}"',
             "-c", f'model_providers.{name}.wire_api="{p.wire_api}"',
         ]
         if p.api_key_env:
             args += ["-c", f'model_providers.{name}.env_key="{p.api_key_env}"']
+        # Capture token goes through Codex's env_http_headers mapping: the
+        # X-Lane-Capture-Token header's value is read from the
+        # LANE_WIRE_CAPTURE_TOKEN env var at request time, so the token never
+        # appears on the command line (-c args).
+        if injection.enabled and injection.capture_token:
+            args += [
+                "-c",
+                'model_providers.'
+                f'{name}.env_http_headers='
+                '{ "X-Lane-Capture-Token" = "LANE_WIRE_CAPTURE_TOKEN" }',
+            ]
         args += ["-c", f'model_provider="{name}"', "-m", model_ref.model]
         return args
 
@@ -50,6 +87,14 @@ class CodexAdapter:
         data_path = Path(data_path)
         attempt_dir = data_path / "attempts" / task.attempt_id
         attempt_dir.mkdir(parents=True, exist_ok=True)
+        # Agent workspace (design: skill_workspace is the agent's sole world
+        # boundary). cwd (-C) is set here, so agent submissions land here —
+        # the attempt root is reserved for the framework's own runtime
+        # metadata (events/thinking/wire/isolated home) and never mixed with
+        # agent output. Defensive mkdir in case nothing has staged env
+        # materials into it yet.
+        workspace = attempt_dir / "skill_workspace"
+        workspace.mkdir(parents=True, exist_ok=True)
         events_path = attempt_dir / "events.jsonl"
         thinking_path = attempt_dir / "thinking.jsonl"
         final_message_path = attempt_dir / "codex_final.txt"
@@ -63,9 +108,7 @@ class CodexAdapter:
                 error_message="codex CLI not found in PATH",
             )
 
-        server_name = f"lane-{task.env_name}"
-        prompt = self._render_prompt(task, server_name)
-        sn = server_name
+        prompt = self._render_prompt(task)
         model_ref = parse_model_ref(self.model, self.providers)
         cmd = [
             cli_path,
@@ -75,17 +118,26 @@ class CodexAdapter:
             "--ephemeral",
             "--ignore-rules",
             "--dangerously-bypass-approvals-and-sandbox",
-            *self._provider_cli_args(model_ref),
-            "-C", str(attempt_dir.resolve()),
+            *self._provider_cli_args(model_ref, task.wire_injection),
+            "-C", str(workspace.resolve()),
             "-o", str(final_message_path.resolve()),
-            "-c", f'mcp_servers.{sn}.command="uv"',
-            "-c", f"mcp_servers.{sn}.args=" f"{json.dumps(self._mcp_args(task), ensure_ascii=True)}",
-            "-c", f'mcp_servers.{sn}.env.LANE_ATTEMPT_ID="{task.attempt_id}"',
-            "-c", f'mcp_servers.{sn}.env.LANE_SESSION_TOKEN="{task.session_token}"',
-            "-c", f'mcp_servers.{sn}.env.LANE_BASE_URL="{task.env_base_url}"',
-            prompt,
         ]
-        self._write_mcp_config_snapshot(task, attempt_dir, server_name)
+        for spec in task.mcp_servers:
+            mcp_command, mcp_args = self._mcp_command_and_args(task, spec)
+            cmd += [
+                "-c", f"mcp_servers.{spec.name}.command="
+                f"{json.dumps(mcp_command, ensure_ascii=True)}",
+                "-c", f"mcp_servers.{spec.name}.args="
+                f"{json.dumps(mcp_args, ensure_ascii=True)}",
+            ]
+            if spec.cwd:
+                cmd += [
+                    "-c", f"mcp_servers.{spec.name}.cwd="
+                    f"{json.dumps(spec.cwd, ensure_ascii=True)}",
+                ]
+        cmd.append(prompt)
+        if task.mcp_servers:
+            self._write_mcp_config_snapshot(task, attempt_dir)
 
         events_count = 0
         thinking_count = 0
@@ -96,24 +148,63 @@ class CodexAdapter:
         started_at = datetime.now(timezone.utc)
         proc = None
 
+        # CODEX_HOME isolation: point Codex's config/state at a clean,
+        # per-attempt directory instead of the host's global ~/.codex
+        # (config.toml, skills, plugins, memories, history), so a benchmark
+        # run never picks up whoever's operating this box's private setup.
+        # Codex's own built-in tools are not disabled by this.
+        iso_codex_home = attempt_dir / ".codex-iso-home"
+        iso_codex_home.mkdir(parents=True, exist_ok=True)
         subprocess_env = {
             **os.environ,
-            "LANE_ATTEMPT_ID": task.attempt_id,
-            "LANE_SESSION_TOKEN": task.session_token,
-            "LANE_BASE_URL": task.env_base_url,
+            "CODEX_HOME": str(iso_codex_home.resolve()),
         }
+        # Codex's MCP config is passed via argv (-c), which is visible to
+        # anything reading the process list — attempt credentials must never
+        # go there. Only when the scenario actually provides an MCP server
+        # do we hand the credentials to the subprocess env, so its stdio MCP
+        # child (which Codex spawns inheriting its own env) can read them.
+        if task.mcp_servers:
+            subprocess_env.update({
+                "LANE_ATTEMPT_ID": task.attempt_id,
+                "LANE_SESSION_TOKEN": task.session_token,
+                "LANE_BASE_URL": task.env_base_url,
+            })
         if model_ref.provider is not None:
             provider = self.providers[model_ref.provider]
             api_key = resolve_api_key(provider)
+            # Without this, codex only reports "Missing environment variable"
+            # inside turn.failed — fail fast with something actionable and
+            # skip spawning the subprocess entirely.
+            if provider.api_key_env and api_key is None:
+                return AdapterResult(
+                    attempt_id=task.attempt_id,
+                    status="auth_failed",
+                    error_code="provider_api_key_missing",
+                    error_message=(
+                        f"provider {model_ref.provider!r} is missing an API key: "
+                        f"env var {provider.api_key_env} is not set, and "
+                        f"agentlane.yaml model_providers.{model_ref.provider}.api_key "
+                        "is also empty"
+                    ),
+                )
             if provider.api_key_env and api_key:
                 subprocess_env[provider.api_key_env] = api_key
+
+        # wire injection consumption point (process_env + capture token);
+        # base_url/mcp rewrites are consumed above via _provider_cli_args /
+        # _mcp_command_and_args.
+        if task.wire_injection.enabled:
+            subprocess_env.update(task.wire_injection.process_env)
+            if task.wire_injection.capture_token:
+                subprocess_env["LANE_WIRE_CAPTURE_TOKEN"] = task.wire_injection.capture_token
 
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=str(attempt_dir),
+                cwd=str(workspace),
                 limit=10 * 1024 * 1024,
                 env=subprocess_env,
             )
@@ -200,45 +291,58 @@ class CodexAdapter:
             security_meta=build_security_meta(
                 execution_locus="host",
                 permission_mode="--dangerously-bypass-approvals-and-sandbox",
-                workspace_root=str(attempt_dir.resolve()),
+                workspace_root=str(workspace.resolve()),
             ),
         )
 
-    def _mcp_args(self, task: AdapterRunInput) -> list[str]:
-        return [
-            "run", "--project", self.project_path,
-            "python",
-            f"{self.project_path}/envs/{task.env_name}/mcp_server.py",
-        ]
+    def _mcp_command_and_args(
+        self, task: AdapterRunInput, spec: Any
+    ) -> tuple[str, list[str]]:
+        """Final command/args for a declared MCP server; the wire mcp
+        rewrite hook is applied here so it wraps only the server the
+        scenario declared."""
+        command = spec.command
+        args = list(spec.args)
+        rewrite = task.wire_injection.mcp_rewrites.get(spec.name)
+        if task.wire_injection.enabled and rewrite is not None:
+            args = [*rewrite.args_prefix, command, *args]
+            command = rewrite.command
+        return command, args
 
-    def _write_mcp_config_snapshot(
-        self, task: AdapterRunInput, attempt_dir: Path, server_name: str
-    ) -> None:
-        config = {
-            "mcp_servers": {
-                server_name: {
-                    "command": "uv",
-                    "args": self._mcp_args(task),
-                    "env": {
-                        "LANE_ATTEMPT_ID": task.attempt_id,
-                        "LANE_SESSION_TOKEN": task.session_token,
-                        "LANE_BASE_URL": task.env_base_url,
-                    },
-                }
+    def _write_mcp_config_snapshot(self, task: AdapterRunInput, attempt_dir: Path) -> None:
+        servers: dict[str, Any] = {}
+        for spec in task.mcp_servers:
+            command, args = self._mcp_command_and_args(task, spec)
+            server: dict[str, Any] = {
+                "command": command,
+                "args": args,
+                "env": {
+                    "LANE_ATTEMPT_ID": task.attempt_id,
+                    "LANE_SESSION_TOKEN": task.session_token,
+                    "LANE_BASE_URL": task.env_base_url,
+                },
             }
-        }
+            if spec.cwd:
+                server["cwd"] = spec.cwd
+            servers[spec.name] = server
+        config = {"mcp_servers": servers}
         (attempt_dir / "codex_mcp_config.json").write_text(
             json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 
-    def _render_prompt(self, task: AdapterRunInput, server_name: str) -> str:
-        parts = [
-            "You are completing an agent-lane benchmark task.",
-            f"You must use the tools exposed by the MCP server `{server_name}`.",
-            "",
-            "Task:",
-            task.task_prompt,
-        ]
+    def _render_prompt(self, task: AdapterRunInput) -> str:
+        # The adapter does not prescribe a solving method — MCP is only one
+        # option among whatever the agent brings natively.
+        parts: list[str] = []
+        # `codex exec`'s PROMPT argument is the only instructions channel —
+        # there's no separate system-prompt slot like Claude Code's
+        # --append-system-prompt — so the time budget (a framework-level
+        # constraint, not part of the task) is placed at the very top of the
+        # message instead. None (unlimited) yields no notice at all.
+        notice = time_budget_notice(task.timeout_seconds)
+        if notice:
+            parts += [notice, ""]
+        parts.append(task.task_prompt)
         context = prompt_context(task.task_context) if task.task_context else {}
         if context:
             parts.append("")

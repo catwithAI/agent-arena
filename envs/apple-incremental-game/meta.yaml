@@ -1,0 +1,28 @@
+name: apple-incremental-game
+type: coding
+category: coding
+test_focus: "纯编程优化题：为分层苹果机器增量游戏设计 500 回合强化策略，考察 agent 对长期收益、复利增长、资源分配和本地搜索/仿真的优化能力。"
+description: EdgeBench Apple Incremental Game — 机器生产优化题。提交 Python 程序读取单个实例，输出 500 回合动作，在 50 个隐藏固定用例上用官方 tester 累加原始得分。
+pass_threshold: 1
+
+# 运行前置（见 docs/env-prerequisites.md）
+prerequisites:
+  level: none                      # none | skill-source | office | compiler | media | judge
+  summary: "零特殊前置，只需 python3。Python tester（跨平台 ASCII，非 ELF），materials/public 自带 solution.py。"
+  requires: []
+  on_missing: "无"
+
+
+materials:
+  agent:
+    - path: materials/public
+      target: .
+
+entrypoints:
+  mcp:
+    enabled: false
+
+dimensions:
+  - name: batch_score
+    weight: 100
+    description: 50 个固定隐藏用例上的官方 tester 原始总分除以固定常数后的无上限优化分；原始 TOTAL_SCORE 写入 eval_result.json 和 detail。

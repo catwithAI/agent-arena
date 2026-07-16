@@ -1,0 +1,6 @@
+{
+  "dataset": "openai/gdpval",
+  "source_task_id": "7d7fc9a7-21a7-4b83-906f-416dea5ad04f",
+  "dataset_revision": "11e7900cdcac61bc4daf59e65feb238acda98fbf",
+  "official_deliverable": "deliverable_files/6d38d3535a408ecad05a8510a0152be4/Aurisic_Amortization_4-25.xlsx"
+}

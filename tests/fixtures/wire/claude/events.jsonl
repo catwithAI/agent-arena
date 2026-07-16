@@ -1,0 +1,8 @@
+{"timestamp": "2026-07-13T00:00:00.000Z", "type": "system", "subtype": "init", "session_id": "sess-1", "model": "claude-opus-4-8", "version": "1.2.3", "cwd": "/x"}
+{"timestamp": "2026-07-13T00:00:01.000Z", "type": "assistant", "message": {"id": "msg_1", "model": "claude-opus-4-8", "role": "assistant", "stop_reason": null, "content": [{"type": "text", "text": "let me search"}], "usage": {"input_tokens": 200}}}
+{"timestamp": "2026-07-13T00:00:02.000Z", "type": "assistant", "message": {"id": "msg_1", "model": "claude-opus-4-8", "role": "assistant", "stop_reason": "tool_use", "content": [{"type": "text", "text": "let me search"}, {"type": "tool_use", "id": "tu_1", "name": "mcp__env__plan", "input": {"q": "航母"}}], "usage": {"input_tokens": 200, "output_tokens": 40, "cache_read_input_tokens": 10, "cache_creation_input_tokens": 5}}}
+{"timestamp": "2026-07-13T00:00:03.000Z", "type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "tu_1", "content": "ok"}]}}
+{"timestamp": "2026-07-13T00:00:04.000Z", "type": "assistant", "message": {"id": "msg_2", "model": "claude-opus-4-8", "role": "assistant", "stop_reason": "end_turn", "content": [{"type": "text", "text": "done"}], "usage": {"input_tokens": 260, "output_tokens": 15}}}
+{"garbage line that should count as parse error}
+{"timestamp": "2026-07-13T00:00:05.000Z", "type": "assistant", "content": "no message id here", "message": {"role": "assistant", "content": [{"type": "text", "text": "orphan"}], "usage": {"output_tokens": 3}}}
+{"timestamp": "2026-07-13T00:00:06.000Z", "type": "result", "subtype": "success", "is_error": false, "duration_ms": 6000, "ttft_ms": 900, "usage": {"input_tokens": 660, "output_tokens": 58}}

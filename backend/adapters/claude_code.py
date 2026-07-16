@@ -1,11 +1,14 @@
 """ClaudeCodeAdapter — drives Claude Code via the `claude` CLI subprocess.
 
 Flow:
-1. Write a temporary MCP config file (env vars carry attempt_id / session
-   token / base_url so the env's MCP server can call back into the attempt
-   server).
+1. If the scenario declares an MCP server (`entrypoints.mcp` in its
+   meta.yaml), write a temporary MCP config file for it (env vars carry
+   attempt_id / session token / base_url so the env's MCP server can call
+   back into the attempt server). Scenarios without a declared MCP server
+   get no `--mcp-config` at all — Claude Code's native tools (WebSearch,
+   Task, skills, slash commands, ...) are left untouched either way.
 2. Spawn `claude -p "{prompt}" --output-format stream-json --verbose
-   --mcp-config {config}`.
+   [--mcp-config {config}]`.
 3. Parse stdout JSONL line by line, collecting thinking blocks / usage /
    events as they arrive.
 
@@ -28,7 +31,13 @@ from pathlib import Path
 from typing import Any
 
 from ..model_providers import ModelProviderSection, parse_model_ref, resolve_api_key
-from .base import AdapterResult, AdapterRunInput, build_security_meta, prompt_context
+from .base import (
+    AdapterResult,
+    AdapterRunInput,
+    build_security_meta,
+    prompt_context,
+    time_budget_notice,
+)
 from .token_usage import (
     estimate_tokens_from_event,
     result_usage_tokens,
@@ -57,6 +66,14 @@ class ClaudeCodeAdapter:
         data_path = Path(data_path)
         attempt_dir = data_path / "attempts" / task.attempt_id
         attempt_dir.mkdir(parents=True, exist_ok=True)
+        # Agent workspace (design: skill_workspace is the agent's sole world
+        # boundary). cwd is set here, so agent submissions land here — the
+        # attempt root is reserved for the framework's own runtime metadata
+        # (events/thinking/wire/isolated home) and never mixed with agent
+        # output. Defensive mkdir in case nothing has staged env materials
+        # into it yet.
+        workspace = attempt_dir / "skill_workspace"
+        workspace.mkdir(parents=True, exist_ok=True)
         events_path = attempt_dir / "events.jsonl"
         thinking_path = attempt_dir / "thinking.jsonl"
 
@@ -71,6 +88,12 @@ class ClaudeCodeAdapter:
 
         mcp_config_path = self._write_mcp_config(task, attempt_dir)
         prompt = self._render_prompt(task)
+        # Time budget (probes capability-per-unit-time) goes through Claude
+        # Code's native --append-system-prompt: it's a framework-level
+        # constraint, not part of the task itself, so it belongs in the
+        # system channel rather than the user prompt. None (unlimited)
+        # yields None from time_budget_notice, so nothing is injected.
+        budget_notice = time_budget_notice(task.timeout_seconds)
         # Provider-prefixed models point the subprocess at a third-party
         # endpoint via its own env, leaving global settings.json untouched so
         # concurrent sessions don't interfere with each other. `--model` gets
@@ -83,25 +106,80 @@ class ClaudeCodeAdapter:
         # schemes that must not be mixed.
         model_ref = parse_model_ref(self.model, self.providers)
         subprocess_env = {**os.environ}
+        # Local-state isolation: point CLAUDE_CONFIG_DIR / HOME at a clean,
+        # empty directory inside the attempt so Claude Code never reads the
+        # host's global ~/.claude (skills/plugins/MCP/memory/CLAUDE.md/
+        # settings) — that would leak whoever runs this benchmark's personal
+        # config into the result. One directory per attempt, so concurrent
+        # attempts never interfere with each other. This does not disable any
+        # of Claude Code's own built-in capabilities (WebSearch, Task,
+        # skills, slash commands, ...) — only the host's private state is
+        # kept out.
+        iso_home = attempt_dir / ".cc-iso-home"
+        (iso_home / ".claude").mkdir(parents=True, exist_ok=True)
+        subprocess_env["CLAUDE_CONFIG_DIR"] = str((iso_home / ".claude").resolve())
+        subprocess_env["HOME"] = str(iso_home.resolve())
         if model_ref.provider is not None:
             provider = self.providers[model_ref.provider]
             subprocess_env["ANTHROPIC_BASE_URL"] = provider.base_url
             api_key = resolve_api_key(provider)
+            # Without this, a missing key just makes the CLI print an
+            # unhelpful "Not logged in · Please run /login" — fail fast with
+            # something actionable instead.
+            if api_key is None and provider.api_key_env:
+                return AdapterResult(
+                    attempt_id=task.attempt_id,
+                    status="auth_failed",
+                    error_code="provider_api_key_missing",
+                    error_message=(
+                        f"provider {model_ref.provider!r} is missing an API key: "
+                        f"env var {provider.api_key_env} is not set, and "
+                        f"agentlane.yaml model_providers.{model_ref.provider}.api_key "
+                        "is also empty"
+                    ),
+                )
             if api_key:
                 subprocess_env["ANTHROPIC_AUTH_TOKEN"] = api_key
                 subprocess_env.pop("ANTHROPIC_API_KEY", None)
             if provider.custom_headers:
                 subprocess_env["ANTHROPIC_CUSTOM_HEADERS"] = provider.custom_headers
+        # wire injection consumption point: after subprocess_env is built,
+        # before the subprocess is spawned. Merge/validation already happened
+        # in lifecycle (reserved names, secrets) -- this only consumes.
+        wi = task.wire_injection
+        if wi.enabled:
+            subprocess_env.update(wi.process_env)
+            if wi.llm_base_url:
+                subprocess_env["ANTHROPIC_BASE_URL"] = wi.llm_base_url
+            extra_headers = dict(wi.llm_headers) if wi.llm_headers else {}
+            # Capture token must land in a real HTTP header -- the CLI won't
+            # turn an env var into a header on its own, only what's in
+            # ANTHROPIC_CUSTOM_HEADERS gets sent with the request to the
+            # (proxied) base URL. Uses its own header name, not Authorization
+            # (that's occupied by provider auth and the proxy strips it).
+            if wi.capture_token:
+                extra_headers["X-Lane-Capture-Token"] = wi.capture_token
+                subprocess_env["LANE_WIRE_CAPTURE_TOKEN"] = wi.capture_token
+            if extra_headers:
+                subprocess_env["ANTHROPIC_CUSTOM_HEADERS"] = _merge_custom_headers(
+                    subprocess_env.get("ANTHROPIC_CUSTOM_HEADERS"), extra_headers
+                )
         cmd = [
             cli_path,
             "-p", prompt,
             "--output-format", "stream-json",
             "--verbose",
-            "--mcp-config", str(mcp_config_path.resolve()),
             "--model", model_ref.model,
             "--max-budget-usd", str(self.max_budget_usd),
             "--dangerously-skip-permissions",
         ]
+        # Isolating HOME only strips the host operator's private config; it
+        # does not disable Claude Code's native tools. Only append an MCP
+        # config when the scenario actually declared one.
+        if mcp_config_path is not None:
+            cmd += ["--mcp-config", str(mcp_config_path.resolve())]
+        if budget_notice:
+            cmd += ["--append-system-prompt", budget_notice]
 
         events_count = 0
         thinking_count = 0
@@ -120,7 +198,7 @@ class ClaudeCodeAdapter:
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=str(attempt_dir),
+                cwd=str(workspace),
                 limit=10 * 1024 * 1024,
                 env=subprocess_env,
             )
@@ -243,40 +321,46 @@ class ClaudeCodeAdapter:
             security_meta=build_security_meta(
                 execution_locus="host",
                 permission_mode="--dangerously-skip-permissions",
-                workspace_root=str(attempt_dir.resolve()),
+                workspace_root=str(workspace.resolve()),
             ),
         )
 
-    def _write_mcp_config(self, task: AdapterRunInput, attempt_dir: Path) -> Path:
-        config = {
-            "mcpServers": {
-                f"lane-{task.env_name}": {
-                    "command": "uv",
-                    "args": [
-                        "run", "--project", self.project_path,
-                        "python",
-                        f"{self.project_path}/envs/{task.env_name}/mcp_server.py",
-                    ],
-                    "env": {
-                        "LANE_ATTEMPT_ID": task.attempt_id,
-                        "LANE_SESSION_TOKEN": task.session_token,
-                        "LANE_BASE_URL": task.env_base_url,
-                    },
-                }
+    def _write_mcp_config(self, task: AdapterRunInput, attempt_dir: Path) -> Path | None:
+        if not task.mcp_servers:
+            return None
+        servers: dict[str, dict[str, Any]] = {}
+        for spec in task.mcp_servers:
+            command = spec.command
+            args = list(spec.args)
+            # wire mcp rewrite consumption point: only wraps the server the
+            # scenario itself declared; the original command is pushed to
+            # the end of args.
+            rewrite = task.wire_injection.mcp_rewrites.get(spec.name)
+            if task.wire_injection.enabled and rewrite is not None:
+                args = [*rewrite.args_prefix, command, *args]
+                command = rewrite.command
+            server: dict[str, Any] = {
+                "command": command,
+                "args": args,
+                "env": {
+                    "LANE_ATTEMPT_ID": task.attempt_id,
+                    "LANE_SESSION_TOKEN": task.session_token,
+                    "LANE_BASE_URL": task.env_base_url,
+                },
             }
-        }
+            if spec.cwd:
+                server["cwd"] = spec.cwd
+            servers[spec.name] = server
+        config = {"mcpServers": servers}
         path = attempt_dir / "mcp_config.json"
         path.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
         return path
 
     def _render_prompt(self, task: AdapterRunInput) -> str:
-        parts = [
-            f"You are completing an agent-lane benchmark task. Use the tools "
-            f"exposed by the `lane-{task.env_name}` MCP server to complete it.",
-            "",
-            "Task:",
-            task.task_prompt,
-        ]
+        # The adapter does not prescribe a solving method — MCP, WebSearch,
+        # Bash, Python, etc. are decided by whatever the scenario declares
+        # plus whatever the agent brings natively.
+        parts = [task.task_prompt]
         context = prompt_context(task.task_context) if task.task_context else {}
         if context:
             parts.append("")
@@ -312,3 +396,44 @@ def _now_iso() -> str:
 def _append_jsonl(path: Path, data: dict) -> None:
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(data, ensure_ascii=False, default=str) + "\n")
+
+
+_DYNAMIC_HEADER_PREFIXES = ("x-eval-", "x-lane-")
+
+
+def _merge_custom_headers(existing: str | None, extra: dict[str, str]) -> str:
+    """Merge the wire injection's attempt-level headers into
+    ANTHROPIC_CUSTOM_HEADERS.
+
+    Parses existing "Name: value" lines case-insensitively (see
+    docs/specs/wire_observability/design.md):
+    - ``x-eval-*`` / ``x-lane-*``: the attempt (injection) value wins,
+      overriding any static value already there;
+    - any other same-named header: the provider's static value is kept, the
+      injected one is dropped rather than appended as a duplicate line.
+    Header name/value legality (token, no CR/LF) is already enforced by
+    lifecycle's merge/validation step.
+    """
+    ordered: list[str] = []  # lowercase name, first-seen order preserved
+    values: dict[str, tuple[str, str]] = {}  # lowercase name -> (original name, value)
+    if existing:
+        for line in existing.splitlines():
+            if ":" not in line:
+                continue
+            name, value = line.split(":", 1)
+            name = name.strip()
+            if not name or name.lower() in values:
+                continue
+            values[name.lower()] = (name, value.strip())
+            ordered.append(name.lower())
+    for name, value in extra.items():
+        key = name.lower()
+        if key not in values:
+            values[key] = (name, value)
+            ordered.append(key)
+        elif key.startswith(_DYNAMIC_HEADER_PREFIXES):
+            # attempt-level correlation header wins, keep the static entry's
+            # original casing/position.
+            values[key] = (values[key][0], value)
+        # any other same-named header: keep the static value
+    return "\n".join(f"{n}: {v}" for n, v in (values[k] for k in ordered))

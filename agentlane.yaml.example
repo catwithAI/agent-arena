@@ -21,14 +21,21 @@ lane:
 
 # Third-party model providers usable by the claude-code / codex adapters.
 # Referenced from a run's `model` field as "<provider>/<model>", e.g.
-# "openrouter/glm-5". API keys are read from the named environment variable
-# at request time — never put a key literal in this file.
+# "openrouter/glm-5". API key resolution order: the named environment
+# variable wins when set; if it's unset (or not configured), it falls back
+# to the `api_key` field below. This file is gitignored, so filling in a
+# real key here is safe — it's a convenience for when the process that
+# starts the backend doesn't have the env var exported. If neither is
+# available for a provider a run references, the claude-code/codex adapter
+# fails the attempt immediately with `auth_failed` / `provider_api_key_missing`
+# instead of letting the CLI report a confusing "not logged in" error.
 #
 # model_providers:
 #   openrouter:
 #     kind: openai-chat        # anthropic | openai-chat | openai-responses
 #     base_url: "https://openrouter.ai/api/v1"
 #     api_key_env: "OPENROUTER_API_KEY"
+#     # api_key: "sk-or-v1-xxxx"  # optional fallback if the env var isn't set
 #     wire_api: "chat"         # codex only; ignored for anthropic-kind providers
 
 # Suggested model strings for the UI's model dropdown (free text still works).

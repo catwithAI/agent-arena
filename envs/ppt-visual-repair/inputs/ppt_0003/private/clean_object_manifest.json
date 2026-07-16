@@ -1,0 +1,99 @@
+{
+  "ok": true,
+  "input": "/home/yang/agent-eval-lab/eval-lite/clean_data/ppt_raw_3/工作汇报总结 - 单页.pptx",
+  "output": "/home/yang/agent-eval-lab/eval-lite/clean_data/ppt_raw_3/.eval_lite_assets/annotated/工作汇报总结_-_单页.annotated.pptx",
+  "slides": [
+    {
+      "slide": 1,
+      "xml_path": "ppt/slides/slide1.xml",
+      "objects": [
+        {
+          "id": "S01-O001",
+          "type": "group",
+          "name": "组合 26",
+          "xml_path": "ppt/slides/slide1.xml",
+          "bbox_emu": {
+            "x": 6643290,
+            "y": 1270232,
+            "cx": 4839390,
+            "cy": 4317536
+          },
+          "text_preview": ""
+        },
+        {
+          "id": "S01-O002",
+          "type": "group",
+          "name": "组合 27",
+          "xml_path": "ppt/slides/slide1.xml",
+          "bbox_emu": {
+            "x": 571014,
+            "y": 1654669,
+            "cx": 5948861,
+            "cy": 3014413
+          },
+          "text_preview": "工作总结 汇报 WORK REPORT Lorem ipsum dolor sit amet, consectetuer adipiscing elit...."
+        },
+        {
+          "id": "S01-O003",
+          "type": "group",
+          "name": "组合 28",
+          "xml_path": "ppt/slides/slide1.xml",
+          "bbox_emu": {
+            "x": 655838,
+            "y": 5363755,
+            "cx": 1842812,
+            "cy": 376280
+          },
+          "text_preview": "汇报人：第一 PPT"
+        },
+        {
+          "id": "S01-O004",
+          "type": "shape",
+          "name": "文本框 23",
+          "xml_path": "ppt/slides/slide1.xml",
+          "bbox_emu": {
+            "x": 758132,
+            "y": 323166,
+            "cx": 1035939,
+            "cy": 362920
+          },
+          "text_preview": "LOGO"
+        },
+        {
+          "id": "S01-O005",
+          "type": "shape",
+          "name": "文本框 24",
+          "xml_path": "ppt/slides/slide1.xml",
+          "bbox_emu": {
+            "x": 1487335,
+            "y": 323166,
+            "cx": 1235545,
+            "cy": 362920
+          },
+          "text_preview": "企业名称"
+        }
+      ],
+      "object_count": 5,
+      "scale": [
+        {
+          "annotation_id": 40,
+          "kind": "scale_bar",
+          "bbox_emu": {
+            "x": 10728960,
+            "y": 6549160,
+            "cx": 1219200,
+            "cy": 65000
+          }
+        },
+        {
+          "annotation_id": 41,
+          "kind": "scale_label",
+          "text": "10% slide width"
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "slide_count": 1,
+  "object_count": 5
+}

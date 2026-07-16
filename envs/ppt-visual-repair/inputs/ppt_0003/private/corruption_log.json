@@ -1,0 +1,129 @@
+{
+  "created_at": "2026-06-25T08:18:28.918590+00:00",
+  "seed": "42",
+  "difficulty": "easy",
+  "clean_data_ref": "clean_data/ppt-2",
+  "operations": [
+    {
+      "id": "image_position_shift",
+      "label": "图片位置偏移"
+    },
+    {
+      "id": "font_position_shift",
+      "label": "字体位置偏移"
+    },
+    {
+      "id": "font_resize",
+      "label": "字体变大或缩小"
+    },
+    {
+      "id": "image_resize",
+      "label": "图片变大"
+    }
+  ],
+  "total_change_count": 4,
+  "files": [
+    {
+      "source": "工作汇报总结 - 单页.pptx",
+      "target": "input/corrupted/工作汇报总结 - 单页.pptx",
+      "requested_operations": [
+        "image_position_shift",
+        "font_position_shift",
+        "font_resize",
+        "image_resize"
+      ],
+      "applied_operations": [
+        "font_position_shift",
+        "font_resize",
+        "image_position_shift",
+        "image_resize"
+      ],
+      "unapplied_operations": [],
+      "change_count": 4,
+      "changes": [
+        {
+          "file": "ppt/slides/slide1.xml",
+          "operation": "image_position_shift",
+          "label": "图片位置偏移",
+          "detail": {
+            "match_index": 0,
+            "char_range": [
+              9344,
+              13663
+            ],
+            "before_xml": "<p:sp><p:nvSpPr><p:cNvPr id=\"12\" name=\"图形 5\"><a:extLst><a:ext uri=\"{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}\"><a16:creat...",
+            "after_xml": "<p:sp><p:nvSpPr><p:cNvPr id=\"12\" name=\"图形 5\"><a:extLst><a:ext uri=\"{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}\"><a16:creat...",
+            "attribute": "a:off@y",
+            "old_value": 1720476,
+            "new_value": 520476,
+            "delta": -1200000
+          }
+        },
+        {
+          "file": "ppt/slides/slide1.xml",
+          "operation": "font_position_shift",
+          "label": "字体位置偏移",
+          "detail": {
+            "match_index": 3,
+            "char_range": [
+              18004,
+              19096
+            ],
+            "before_xml": "<p:sp><p:nvSpPr><p:cNvPr id=\"16\" name=\"文本框 15\"><a:extLst><a:ext uri=\"{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}\"><a16:cre...",
+            "after_xml": "<p:sp><p:nvSpPr><p:cNvPr id=\"16\" name=\"文本框 15\"><a:extLst><a:ext uri=\"{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}\"><a16:cre...",
+            "attribute": "a:off@y",
+            "shape_name": "文本框 15",
+            "text_preview": "工作总结丨工作汇报丨项目汇报丨述职报告",
+            "old_value": 3605765,
+            "new_value": 4805765,
+            "delta": 1200000
+          }
+        },
+        {
+          "file": "ppt/slides/slide1.xml",
+          "operation": "font_resize",
+          "label": "字体变大或缩小",
+          "detail": {
+            "match_index": 1,
+            "char_range": [
+              15313,
+              16525
+            ],
+            "before_xml": "<p:sp><p:nvSpPr><p:cNvPr id=\"14\" name=\"文本框 13\"><a:extLst><a:ext uri=\"{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}\"><a16:cre...",
+            "after_xml": "<p:sp><p:nvSpPr><p:cNvPr id=\"14\" name=\"文本框 13\"><a:extLst><a:ext uri=\"{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}\"><a16:cre...",
+            "attribute": "text_shape@sz",
+            "shape_name": "文本框 13",
+            "text_preview": "WORK REPORT",
+            "old_values": [
+              3600,
+              3600
+            ],
+            "new_values": [
+              1620,
+              1620
+            ],
+            "scale_factor": 0.45
+          }
+        },
+        {
+          "file": "ppt/slides/slide1.xml",
+          "operation": "image_resize",
+          "label": "图片变大",
+          "detail": {
+            "match_index": 0,
+            "char_range": [
+              9344,
+              13662
+            ],
+            "before_xml": "<p:sp><p:nvSpPr><p:cNvPr id=\"12\" name=\"图形 5\"><a:extLst><a:ext uri=\"{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}\"><a16:creat...",
+            "after_xml": "<p:sp><p:nvSpPr><p:cNvPr id=\"12\" name=\"图形 5\"><a:extLst><a:ext uri=\"{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}\"><a16:creat...",
+            "attribute": "a:ext@cx",
+            "old_value": 3830060,
+            "new_value": 6128096,
+            "scale_factor": 1.6
+          }
+        }
+      ]
+    }
+  ]
+}

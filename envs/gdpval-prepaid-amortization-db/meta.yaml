@@ -1,0 +1,29 @@
+name: gdpval-prepaid-amortization-db
+type: coding
+category: hallucination-control
+test_focus: "GDPval 多文件会计任务的事实提取、跨文件核对与幻觉控制"
+description: "基于官方 GDPval Aurisic prepaid amortization task；Agent 直接编辑最终 SQLite 状态，评分不依赖 LLM judge。"
+pass_threshold: 70
+
+# 运行前置（见 docs/env-prerequisites.md）
+prerequisites:
+  level: none                      # none | skill-source | office | compiler | media | judge
+  summary: "零特殊工具。sqlite + json 评分，读 agent 产出 amortization.db 对照 expected_state.json（自带）。无 LLM judge。"
+  requires:
+    - "python3 标准库"
+  on_missing: "无（数据集自带）"
+
+entrypoints:
+  mcp:
+    enabled: false
+
+dimensions:
+  - name: invoice_fidelity
+    weight: 60
+    description: "66 张发票的账户、日期、金额和集合完整性"
+  - name: balance_reconciliation
+    weight: 30
+    description: "1250/1251 账面余额与官方 GL 月末余额"
+  - name: completion
+    weight: 10
+    description: "数据库存在且已 finalized"

@@ -24,6 +24,14 @@ cd web && npm install && npm run dev
 打开前端（默认 `http://127.0.0.1:5173`），选择一个评测环境，勾选已安装
 的 agent（`claude-code`/`codex` 需要在 `PATH` 中），然后运行。
 
+如果要让 claude-code/codex 走第三方 model provider（见
+`agentlane.yaml.example` 里的 `model_providers`），启动后端前请确保对应的
+API key 可用：要么把 `api_key_env` 指定的环境变量导出（`cp .env.example
+.env`，填好之后 `source .env`），要么直接把 key 填到 `agentlane.yaml` 里
+该 provider 的 `api_key` 字段（该文件已 gitignore）。如果某个 run 引用的
+provider 两边都没配置 key，评测会立刻以清晰的 `provider_api_key_missing`
+错误失败，而不是让 CLI 报一个让人摸不着头脑的登录错误。
+
 ## 内置评测环境
 
 - **order-desk** —— 工具调用类环境：在预算约束下搜索一个模拟图书目录并

@@ -1,0 +1,16 @@
+{
+  "id": "ppt_visual_polish_0005",
+  "env_name": "ppt-visual-repair",
+  "prompt": "本任务面向具备视觉能力的 Agent：开始编辑前，必须先将 draft.pptx 渲染为 PNG 图片并实际查看页面，再基于渲染结果进行视觉诊断和修改；不得只读取 OOXML、文本或对象属性后直接编辑。完成修改后，必须再次将 polished.pptx 渲染为 PNG，与修改前的图片进行视觉对比，确认遮挡、图片位置、旋转角度、比例和可读性问题是否真正改善。 工作目录里有一份可以正常打开和编辑的 PPT 视觉草稿 draft.pptx。它的文件结构没有损坏，但页面中存在刻意设置的版式与视觉质量问题。请像一名有成熟审美判断的演示文稿设计师一样检查并润色它，改善视觉层级、构图、对齐、间距、留白、字体、比例和整体一致性，尤其检查主要图片是否处于不自然的位置或旋转角度，使其达到可直接展示的专业水准。请保留原有主题、文字含义、图片素材和页数，不要凭空增加内容，也不要仅通过重新保存文件作为结果。允许存在多种合理设计方案，不要求猜测或还原某个唯一原版。最终必须在工作目录根目录生成 polished.pptx；可选生成 design_notes.md 简述关键设计判断。",
+  "files": [{"path": "inputs/ppt_0005/agent_materials/corrupted.pptx", "name": "draft.pptx"}],
+  "context": {
+    "skill_name": "ppt-visual-repair",
+    "source_case_id": "ppt_0005",
+    "source_difficulty": "easy",
+    "source_corruption_types": ["font_resize", "font_position_shift", "image_position_shift"],
+    "expected_outputs": ["polished.pptx"],
+    "optional_outputs": ["design_notes.md"]
+  },
+  "constraints": {"required_outputs": ["polished.pptx"], "preserve_slide_count": true},
+  "timeout_seconds": 900
+}

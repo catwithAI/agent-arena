@@ -1,0 +1,9 @@
+{"timestamp": "2026-07-13T00:00:00.000Z", "type": "thread.started", "thread_id": "th_abc"}
+{"timestamp": "2026-07-13T00:00:01.000Z", "type": "turn.started"}
+{"timestamp": "2026-07-13T00:00:02.000Z", "type": "item.completed", "item": {"id": "it_0", "type": "agent_message", "text": "计划：先建立编队"}}
+{"timestamp": "2026-07-13T00:00:03.000Z", "type": "item.completed", "item": {"id": "it_1", "type": "mcp_tool_call", "server": "lane-cpp-optimizer", "tool": "build_formation", "arguments": {}, "result": "ok", "error": null, "status": "completed"}}
+{"garbage not json}
+{"timestamp": "2026-07-13T00:00:04.000Z", "type": "item.completed", "item": {"id": "it_2", "type": "command_execution", "command": "python calc.py", "aggregated_output": "done", "exit_code": 0, "status": "completed"}}
+{"timestamp": "2026-07-13T00:00:05.000Z", "type": "item.completed", "item": {"id": "it_3", "type": "todo_list", "items": []}}
+{"timestamp": "2026-07-13T00:00:06.000Z", "type": "item.completed", "item": {"id": "it_4", "type": "agent_message", "text": "完成"}}
+{"timestamp": "2026-07-13T00:00:07.000Z", "type": "turn.completed", "usage": {"input_tokens": 5000, "cached_input_tokens": 4000, "output_tokens": 120, "reasoning_output_tokens": 30}}
