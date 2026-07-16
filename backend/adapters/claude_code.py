@@ -1,11 +1,14 @@
 """ClaudeCodeAdapter — drives Claude Code via the `claude` CLI subprocess.
 
 Flow:
-1. Write a temporary MCP config file (env vars carry attempt_id / session
-   token / base_url so the env's MCP server can call back into the attempt
-   server).
+1. If the scenario declares an MCP server (`entrypoints.mcp` in its
+   meta.yaml), write a temporary MCP config file for it (env vars carry
+   attempt_id / session token / base_url so the env's MCP server can call
+   back into the attempt server). Scenarios without a declared MCP server
+   get no `--mcp-config` at all — Claude Code's native tools (WebSearch,
+   Task, skills, slash commands, ...) are left untouched either way.
 2. Spawn `claude -p "{prompt}" --output-format stream-json --verbose
-   --mcp-config {config}`.
+   [--mcp-config {config}]`.
 3. Parse stdout JSONL line by line, collecting thinking blocks / usage /
    events as they arrive.
 
@@ -83,6 +86,19 @@ class ClaudeCodeAdapter:
         # schemes that must not be mixed.
         model_ref = parse_model_ref(self.model, self.providers)
         subprocess_env = {**os.environ}
+        # Local-state isolation: point CLAUDE_CONFIG_DIR / HOME at a clean,
+        # empty directory inside the attempt so Claude Code never reads the
+        # host's global ~/.claude (skills/plugins/MCP/memory/CLAUDE.md/
+        # settings) — that would leak whoever runs this benchmark's personal
+        # config into the result. One directory per attempt, so concurrent
+        # attempts never interfere with each other. This does not disable any
+        # of Claude Code's own built-in capabilities (WebSearch, Task,
+        # skills, slash commands, ...) — only the host's private state is
+        # kept out.
+        iso_home = attempt_dir / ".cc-iso-home"
+        (iso_home / ".claude").mkdir(parents=True, exist_ok=True)
+        subprocess_env["CLAUDE_CONFIG_DIR"] = str((iso_home / ".claude").resolve())
+        subprocess_env["HOME"] = str(iso_home.resolve())
         if model_ref.provider is not None:
             provider = self.providers[model_ref.provider]
             subprocess_env["ANTHROPIC_BASE_URL"] = provider.base_url
@@ -118,11 +134,15 @@ class ClaudeCodeAdapter:
             "-p", prompt,
             "--output-format", "stream-json",
             "--verbose",
-            "--mcp-config", str(mcp_config_path.resolve()),
             "--model", model_ref.model,
             "--max-budget-usd", str(self.max_budget_usd),
             "--dangerously-skip-permissions",
         ]
+        # Isolating HOME only strips the host operator's private config; it
+        # does not disable Claude Code's native tools. Only append an MCP
+        # config when the scenario actually declared one.
+        if mcp_config_path is not None:
+            cmd += ["--mcp-config", str(mcp_config_path.resolve())]
 
         events_count = 0
         thinking_count = 0
@@ -268,45 +288,42 @@ class ClaudeCodeAdapter:
             ),
         )
 
-    def _write_mcp_config(self, task: AdapterRunInput, attempt_dir: Path) -> Path:
-        server_name = f"lane-{task.env_name}"
-        command = "uv"
-        args = [
-            "run", "--project", self.project_path,
-            "python",
-            f"{self.project_path}/envs/{task.env_name}/mcp_server.py",
-        ]
-        # wire mcp rewrite consumption point: only wraps the server agent-lane
-        # itself injected; the original command is pushed to the end of args.
-        rewrite = task.wire_injection.mcp_rewrites.get(server_name)
-        if task.wire_injection.enabled and rewrite is not None:
-            args = [*rewrite.args_prefix, command, *args]
-            command = rewrite.command
-        config = {
-            "mcpServers": {
-                server_name: {
-                    "command": command,
-                    "args": args,
-                    "env": {
-                        "LANE_ATTEMPT_ID": task.attempt_id,
-                        "LANE_SESSION_TOKEN": task.session_token,
-                        "LANE_BASE_URL": task.env_base_url,
-                    },
-                }
+    def _write_mcp_config(self, task: AdapterRunInput, attempt_dir: Path) -> Path | None:
+        if not task.mcp_servers:
+            return None
+        servers: dict[str, dict[str, Any]] = {}
+        for spec in task.mcp_servers:
+            command = spec.command
+            args = list(spec.args)
+            # wire mcp rewrite consumption point: only wraps the server the
+            # scenario itself declared; the original command is pushed to
+            # the end of args.
+            rewrite = task.wire_injection.mcp_rewrites.get(spec.name)
+            if task.wire_injection.enabled and rewrite is not None:
+                args = [*rewrite.args_prefix, command, *args]
+                command = rewrite.command
+            server: dict[str, Any] = {
+                "command": command,
+                "args": args,
+                "env": {
+                    "LANE_ATTEMPT_ID": task.attempt_id,
+                    "LANE_SESSION_TOKEN": task.session_token,
+                    "LANE_BASE_URL": task.env_base_url,
+                },
             }
-        }
+            if spec.cwd:
+                server["cwd"] = spec.cwd
+            servers[spec.name] = server
+        config = {"mcpServers": servers}
         path = attempt_dir / "mcp_config.json"
         path.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
         return path
 
     def _render_prompt(self, task: AdapterRunInput) -> str:
-        parts = [
-            f"You are completing an agent-lane benchmark task. Use the tools "
-            f"exposed by the `lane-{task.env_name}` MCP server to complete it.",
-            "",
-            "Task:",
-            task.task_prompt,
-        ]
+        # The adapter does not prescribe a solving method — MCP, WebSearch,
+        # Bash, Python, etc. are decided by whatever the scenario declares
+        # plus whatever the agent brings natively.
+        parts = [task.task_prompt]
         context = prompt_context(task.task_context) if task.task_context else {}
         if context:
             parts.append("")

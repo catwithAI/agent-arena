@@ -18,11 +18,12 @@ Agent resolution is intentionally simple and open-ended:
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
 from . import runtime_state
-from .adapters.base import AdapterRunInput
+from .adapters.base import AdapterRunInput, McpServerSpec
 from .adapters.custom_cli import CustomCliAdapter, CustomCliConfig
 from .config import Settings
 from .db import _now_iso, _open_sync
@@ -53,11 +54,13 @@ def _build_wire_sources(
     attempt_id: str,
     env_name: str,
     data_path: Any,
+    mcp_server_names: tuple[str, ...] = (),
 ) -> list[Any]:
     """Assemble the wire capture sources for this attempt:
     - HttpProxySource: claude-code/codex on a named third-party provider.
-    - McpStdioSource: claude-code/codex (wraps the MCP server agent-lane
-      injects).
+    - McpStdioSource: claude-code/codex, one per MCP server the scenario
+      actually declared. No declaration means no source — agent-lane never
+      injects an MCP server on its own.
     """
     sources: list[Any] = []
     if agent_name in _HTTP_PROXY_AGENTS and model:
@@ -72,12 +75,16 @@ def _build_wire_sources(
                     public_base_url=settings.lane.public_base_url,
                 )
             )
-    if agent_name in _MCP_TAP_AGENTS:
+    if agent_name in _MCP_TAP_AGENTS and mcp_server_names:
         from .wire.sources.mcp_stdio import McpStdioSource
 
-        sources.append(
-            McpStdioSource(attempt_id=attempt_id, env_name=env_name, data_path=data_path)
-        )
+        for server_name in mcp_server_names:
+            sources.append(
+                McpStdioSource(
+                    attempt_id=attempt_id, env_name=env_name, data_path=data_path,
+                    server_name=server_name,
+                )
+            )
     return sources
 
 
@@ -188,6 +195,23 @@ async def dispatch(
         _refresh_run_status(state.db_path, attempt_id)
         return
 
+    try:
+        mcp_servers = _mcp_server_specs(env)
+    except ValueError as exc:
+        from .runner import _finalize_no_score
+
+        logger.error("dispatch: invalid MCP entrypoint env=%s: %s", env_name, exc)
+        _finalize_no_score(
+            db_path=state.db_path,
+            attempt_id=attempt_id,
+            status="cli_error",
+            error_code="invalid_scene_mcp_entrypoint",
+            error_message=str(exc),
+            pass_threshold=int(env.meta.get("pass_threshold", 60)),
+        )
+        _refresh_run_status(state.db_path, attempt_id)
+        return
+
     # Wire capture: prepare always runs before adapter.run(). With no source
     # wired up (unknown agent, no named third-party provider) this is a
     # no-op that returns a zero injection, so behavior is identical to
@@ -206,6 +230,7 @@ async def dispatch(
         attempt_id=attempt_id,
         env_name=env_name,
         data_path=state.data_path,
+        mcp_server_names=tuple(spec.name for spec in mcp_servers),
     )
     effective_policy = resolve_effective_policy(
         server_max=settings.lane.wire_capture_max_policy,
@@ -247,6 +272,7 @@ async def dispatch(
         env_skill_id=f"lane/{env_name}",
         session_token=session_token,
         env_base_url=settings.lane.public_base_url,
+        mcp_servers=mcp_servers,
         wire_injection=injection,
     )
     try:
@@ -259,6 +285,40 @@ async def dispatch(
             await capture.abort_before_or_during_run()
         raise
     _refresh_run_status(state.db_path, attempt_id)
+
+
+def _mcp_server_specs(env: Any) -> tuple[McpServerSpec, ...]:
+    """Translate a scenario's declared `entrypoints.mcp` into adapter input.
+
+    This never infers MCP capability from what happens to sit in the env
+    directory — only an explicit, enabled declaration in meta.yaml counts.
+    """
+    entrypoints = (getattr(env, "meta", {}) or {}).get("entrypoints") or {}
+    raw = entrypoints.get("mcp")
+    if not isinstance(raw, dict) or not raw.get("enabled", False):
+        return ()
+    if raw.get("transport", "stdio") != "stdio":
+        raise ValueError(f"env {env.name}: only MCP stdio transport is currently supported")
+    command = raw.get("command")
+    if not isinstance(command, list) or not command or not all(
+        isinstance(part, str) and part for part in command
+    ):
+        raise ValueError(f"env {env.name}: entrypoints.mcp.command must be a non-empty string list")
+    name = raw.get("name") or f"lane-{env.name}"
+    if not isinstance(name, str) or re.fullmatch(r"[A-Za-z0-9_-]+", name) is None:
+        raise ValueError(
+            f"env {env.name}: entrypoints.mcp.name may only contain letters, digits, "
+            "underscores and hyphens"
+        )
+    project_root = Path(env.env_dir).resolve().parent.parent
+    return (
+        McpServerSpec(
+            name=name,
+            command=command[0],
+            args=tuple(command[1:]),
+            cwd=str(project_root),
+        ),
+    )
 
 
 def _mark_running(db_path: Path, attempt_id: str) -> None:

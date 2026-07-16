@@ -4,8 +4,16 @@ import asyncio
 import json
 from unittest.mock import patch
 
-from backend.adapters.base import AdapterRunInput
+from backend.adapters.base import AdapterRunInput, McpServerSpec
 from backend.adapters.ssh_claude_code import SshClaudeCodeAdapter
+
+
+def _mcp() -> McpServerSpec:
+    return McpServerSpec(
+        name="lane-travel-planner", command="uv",
+        args=("run", "python", "envs/travel-planner/mcp_server.py"),
+        cwd="/tmp/lane",
+    )
 
 
 def _make_task(**overrides) -> AdapterRunInput:
@@ -19,6 +27,7 @@ def _make_task(**overrides) -> AdapterRunInput:
         env_skill_id="lane/travel-planner",
         session_token="tok_test",
         env_base_url="http://127.0.0.1:8100",
+        mcp_servers=(_mcp(),),
     )
     defaults.update(overrides)
     return AdapterRunInput(**defaults)

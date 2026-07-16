@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 import pytest
 
-from backend.adapters.base import AdapterRunInput
+from backend.adapters.base import AdapterRunInput, McpServerSpec
 from backend.wire import spool
 from backend.wire.injection import CommandRewrite, PhaseStateRef, WireInjection
 from backend.wire.lifecycle import (
@@ -43,6 +43,11 @@ def _make_task(**overrides) -> AdapterRunInput:
         env_skill_id="lane/travel-planner",
         session_token="tok_test",
         env_base_url="http://127.0.0.1:8100",
+        mcp_servers=(McpServerSpec(
+            name="lane-travel-planner", command="uv",
+            args=("run", "--project", ".", "python", "envs/travel-planner/mcp_server.py"),
+            cwd="/repo",
+        ),),
     )
     defaults.update(overrides)
     return AdapterRunInput(**defaults)

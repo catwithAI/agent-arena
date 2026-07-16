@@ -162,12 +162,13 @@ def _settings_with_provider() -> Settings:
     return s
 
 
-def _build(agent, model):
+def _build(agent, model, *, with_mcp=True):
     from pathlib import Path
     from backend.run_dispatch import _build_wire_sources
     return _build_wire_sources(
         agent_name=agent, model=model, settings=_settings_with_provider(),
-        attempt_id="att_x", env_name="travel-planner", data_path=Path("/tmp/d"))
+        attempt_id="att_x", env_name="travel-planner", data_path=Path("/tmp/d"),
+        mcp_server_names=("lane-travel-planner",) if with_mcp else ())
 
 
 def _kinds(srcs):
@@ -195,6 +196,120 @@ def test_dispatch_gate_official_provider_only_mcp_no_proxy():
 def test_dispatch_gate_third_party_agent_no_source():
     # 第三方 agent 走 SDK / Env Server HTTP，反代与本机 MCP tap 都不适用。
     assert _build("third-party-agent", "up/glm") == []
+
+
+def test_dispatch_gate_without_scene_mcp_does_not_create_tap():
+    # 场景未声明 MCP server 时，即使是命名 provider 也不挂 MCP tap。
+    assert _kinds(_build("codex", "up/glm", with_mcp=False)) == {"lane-http"}
+
+
+# ---------- _mcp_server_specs：场景声明式 MCP，framework 不推断 ----------------
+
+
+def test_mcp_entrypoint_is_scene_declared_not_inferred(tmp_path: Path):
+    from types import SimpleNamespace
+
+    from backend.run_dispatch import _mcp_server_specs
+
+    env = SimpleNamespace(
+        name="demo-env",
+        env_dir=tmp_path / "envs" / "demo-env",
+        meta={"entrypoints": {"mcp": {
+            "enabled": True,
+            "transport": "stdio",
+            "name": "scene-search",
+            "command": ["custom-search-server", "--stdio"],
+        }}},
+    )
+    specs = _mcp_server_specs(env)
+    assert len(specs) == 1
+    assert specs[0].name == "scene-search"
+    assert specs[0].command == "custom-search-server"
+    assert specs[0].args == ("--stdio",)
+
+
+def test_mcp_entrypoint_defaults_name_to_lane_prefixed_env_name(tmp_path: Path):
+    from types import SimpleNamespace
+
+    from backend.run_dispatch import _mcp_server_specs
+
+    env = SimpleNamespace(
+        name="demo-env",
+        env_dir=tmp_path / "envs" / "demo-env",
+        meta={"entrypoints": {"mcp": {
+            "enabled": True,
+            "transport": "stdio",
+            "command": ["uv", "run", "--project", ".", "python", "envs/demo-env/mcp_server.py"],
+        }}},
+    )
+    specs = _mcp_server_specs(env)
+    assert specs[0].name == "lane-demo-env"
+    assert specs[0].command == "uv"
+    assert specs[0].args == ("run", "--project", ".", "python", "envs/demo-env/mcp_server.py")
+
+
+def test_no_mcp_declaration_means_no_mcp_even_if_file_exists(tmp_path: Path):
+    from types import SimpleNamespace
+
+    from backend.run_dispatch import _mcp_server_specs
+
+    env_dir = tmp_path / "envs" / "demo-env"
+    env_dir.mkdir(parents=True)
+    (env_dir / "mcp_server.py").write_text("# must not be inferred")
+    env = SimpleNamespace(name="demo-env", env_dir=env_dir, meta={})
+    assert _mcp_server_specs(env) == ()
+
+    env_disabled = SimpleNamespace(
+        name="demo-env", env_dir=env_dir,
+        meta={"entrypoints": {"mcp": {"enabled": False}}},
+    )
+    assert _mcp_server_specs(env_disabled) == ()
+
+
+def test_mcp_entrypoint_rejects_non_stdio_transport(tmp_path: Path):
+    from types import SimpleNamespace
+
+    from backend.run_dispatch import _mcp_server_specs
+
+    env = SimpleNamespace(
+        name="demo-env",
+        env_dir=tmp_path / "envs" / "demo-env",
+        meta={"entrypoints": {"mcp": {
+            "enabled": True, "transport": "http", "command": ["x"],
+        }}},
+    )
+    with pytest.raises(ValueError):
+        _mcp_server_specs(env)
+
+
+def test_mcp_entrypoint_rejects_empty_command(tmp_path: Path):
+    from types import SimpleNamespace
+
+    from backend.run_dispatch import _mcp_server_specs
+
+    env = SimpleNamespace(
+        name="demo-env",
+        env_dir=tmp_path / "envs" / "demo-env",
+        meta={"entrypoints": {"mcp": {"enabled": True, "command": []}}},
+    )
+    with pytest.raises(ValueError):
+        _mcp_server_specs(env)
+
+
+def test_mcp_entrypoint_rejects_illegal_server_name(tmp_path: Path):
+    from types import SimpleNamespace
+
+    from backend.run_dispatch import _mcp_server_specs
+
+    env = SimpleNamespace(
+        name="demo-env",
+        env_dir=tmp_path / "envs" / "demo-env",
+        meta={"entrypoints": {"mcp": {
+            "enabled": True, "name": "bad name!", "command": ["x"],
+        }}},
+    )
+    with pytest.raises(ValueError):
+        _mcp_server_specs(env)
 
 
 # ---------- 并发隔离 ----------------------------------------------------------

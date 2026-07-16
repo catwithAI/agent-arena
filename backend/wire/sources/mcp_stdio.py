@@ -1,7 +1,7 @@
 """McpStdioSource：把 CC/Codex 的 MCP server 命令改写成经 mcp_tap 包装（W3-3）。
 
 这是 lifecycle 的 `CaptureSource`（design §8.1/§12.1）。`start()` 产一个
-`WireInjection.mcp_rewrites`，key 为 adapter 约定的 `lane-<env_name>`，值是
+`WireInjection.mcp_rewrites`，key 为场景声明的 MCP server name，值是
 `CommandRewrite`——adapter 会把原 MCP command 后置成：
 
     <tap_command> <tap_args...> -- <原 MCP command...>
@@ -9,8 +9,8 @@
 tap（`python -m backend.wire.mcp_tap`）在 CC/Codex 与真实 MCP server 之间做透明
 双向 pump + JSON-RPC 帧 capture（见 mcp_tap.py / mcp_frames.py）。
 
-只包 agent-lane 注入的那个 server（key 精确匹配 `lane-<env_name>`），不动用户全局
-MCP 配置。spool 落在 `<attempt>/wire-sources/`（tap 是独立进程，直接写该目录）。
+只包场景显式声明的那个 server，不创建 server，也不动 agent 的其他 MCP 配置。
+spool 落在 `<attempt>/wire-sources/`（tap 是独立进程，直接写该目录）。
 """
 
 from __future__ import annotations
@@ -34,13 +34,16 @@ class McpStdioSource:
     kind = "mcp-stdio"
     rewrites_transport = True  # 改写 command
 
-    def __init__(self, *, attempt_id: str, env_name: str, data_path: Any) -> None:
+    def __init__(
+        self, *, attempt_id: str, env_name: str, data_path: Any,
+        server_name: str | None = None,
+    ) -> None:
         self.attempt_id = attempt_id
         self.env_name = env_name
         self.data_path = data_path
-        # adapter 约定的 MCP server key。
-        self.server_key = f"lane-{env_name}"
-        self.instance = env_name
+        # 兼容旧调用者的默认名；生产 dispatch 总是传场景声明解析后的 name。
+        self.server_key = server_name or f"lane-{env_name}"
+        self.instance = self.server_key
 
     def _tap_rewrite(self, ctx: CaptureContext) -> CommandRewrite:
         # 必须用**绝对**路径：tap 是 adapter（codex/CC）以 cwd=attempt_dir 拉起的独立

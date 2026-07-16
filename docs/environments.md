@@ -44,6 +44,15 @@ Weights determine the aggregation of `scorer.py`'s output into
 `score_total` (weighted average, 0-100). If all weights are 0/missing, a
 simple average is used instead.
 
+`entrypoints` is the single source of truth for what tool capability an
+agent gets — the mere presence of `mcp_server.py` in the directory does not
+enable it. With `entrypoints.mcp.enabled: false` (or the key missing
+entirely), the dispatcher generates no MCP config, starts no capture tap,
+and adds no MCP-related text to the prompt, regardless of what files exist
+on disk. `command` must be the scenario's actual, complete launch command
+(argv list); the adapter runs it verbatim and never tries to guess or
+reconstruct it from `env_name`.
+
 ## Tools (`core.py`)
 
 Only needed if `type: skill`. Decorate plain functions with `@env_tool`;

@@ -94,11 +94,8 @@ class CodexAdapter:
                 error_message="codex CLI not found in PATH",
             )
 
-        server_name = f"lane-{task.env_name}"
-        prompt = self._render_prompt(task, server_name)
-        sn = server_name
+        prompt = self._render_prompt(task)
         model_ref = parse_model_ref(self.model, self.providers)
-        mcp_command, mcp_args = self._mcp_command_and_args(task)
         cmd = [
             cli_path,
             "exec",
@@ -110,14 +107,23 @@ class CodexAdapter:
             *self._provider_cli_args(model_ref, task.wire_injection),
             "-C", str(attempt_dir.resolve()),
             "-o", str(final_message_path.resolve()),
-            "-c", f'mcp_servers.{sn}.command="{mcp_command}"',
-            "-c", f"mcp_servers.{sn}.args=" f"{json.dumps(mcp_args, ensure_ascii=True)}",
-            "-c", f'mcp_servers.{sn}.env.LANE_ATTEMPT_ID="{task.attempt_id}"',
-            "-c", f'mcp_servers.{sn}.env.LANE_SESSION_TOKEN="{task.session_token}"',
-            "-c", f'mcp_servers.{sn}.env.LANE_BASE_URL="{task.env_base_url}"',
-            prompt,
         ]
-        self._write_mcp_config_snapshot(task, attempt_dir, server_name)
+        for spec in task.mcp_servers:
+            mcp_command, mcp_args = self._mcp_command_and_args(task, spec)
+            cmd += [
+                "-c", f"mcp_servers.{spec.name}.command="
+                f"{json.dumps(mcp_command, ensure_ascii=True)}",
+                "-c", f"mcp_servers.{spec.name}.args="
+                f"{json.dumps(mcp_args, ensure_ascii=True)}",
+            ]
+            if spec.cwd:
+                cmd += [
+                    "-c", f"mcp_servers.{spec.name}.cwd="
+                    f"{json.dumps(spec.cwd, ensure_ascii=True)}",
+                ]
+        cmd.append(prompt)
+        if task.mcp_servers:
+            self._write_mcp_config_snapshot(task, attempt_dir)
 
         events_count = 0
         thinking_count = 0
@@ -128,12 +134,28 @@ class CodexAdapter:
         started_at = datetime.now(timezone.utc)
         proc = None
 
+        # CODEX_HOME isolation: point Codex's config/state at a clean,
+        # per-attempt directory instead of the host's global ~/.codex
+        # (config.toml, skills, plugins, memories, history), so a benchmark
+        # run never picks up whoever's operating this box's private setup.
+        # Codex's own built-in tools are not disabled by this.
+        iso_codex_home = attempt_dir / ".codex-iso-home"
+        iso_codex_home.mkdir(parents=True, exist_ok=True)
         subprocess_env = {
             **os.environ,
-            "LANE_ATTEMPT_ID": task.attempt_id,
-            "LANE_SESSION_TOKEN": task.session_token,
-            "LANE_BASE_URL": task.env_base_url,
+            "CODEX_HOME": str(iso_codex_home.resolve()),
         }
+        # Codex's MCP config is passed via argv (-c), which is visible to
+        # anything reading the process list — attempt credentials must never
+        # go there. Only when the scenario actually provides an MCP server
+        # do we hand the credentials to the subprocess env, so its stdio MCP
+        # child (which Codex spawns inheriting its own env) can read them.
+        if task.mcp_servers:
+            subprocess_env.update({
+                "LANE_ATTEMPT_ID": task.attempt_id,
+                "LANE_SESSION_TOKEN": task.session_token,
+                "LANE_BASE_URL": task.env_base_url,
+            })
         if model_ref.provider is not None:
             provider = self.providers[model_ref.provider]
             api_key = resolve_api_key(provider)
@@ -244,50 +266,45 @@ class CodexAdapter:
             ),
         )
 
-    def _mcp_command_and_args(self, task: AdapterRunInput) -> tuple[str, list[str]]:
-        """Final command/args for the MCP server; the wire mcp rewrite hook
-        is applied here so it wraps only the server agent-lane injected."""
-        command = "uv"
-        args = [
-            "run", "--project", self.project_path,
-            "python",
-            f"{self.project_path}/envs/{task.env_name}/mcp_server.py",
-        ]
-        rewrite = task.wire_injection.mcp_rewrites.get(f"lane-{task.env_name}")
+    def _mcp_command_and_args(
+        self, task: AdapterRunInput, spec: Any
+    ) -> tuple[str, list[str]]:
+        """Final command/args for a declared MCP server; the wire mcp
+        rewrite hook is applied here so it wraps only the server the
+        scenario declared."""
+        command = spec.command
+        args = list(spec.args)
+        rewrite = task.wire_injection.mcp_rewrites.get(spec.name)
         if task.wire_injection.enabled and rewrite is not None:
             args = [*rewrite.args_prefix, command, *args]
             command = rewrite.command
         return command, args
 
-    def _write_mcp_config_snapshot(
-        self, task: AdapterRunInput, attempt_dir: Path, server_name: str
-    ) -> None:
-        command, args = self._mcp_command_and_args(task)
-        config = {
-            "mcp_servers": {
-                server_name: {
-                    "command": command,
-                    "args": args,
-                    "env": {
-                        "LANE_ATTEMPT_ID": task.attempt_id,
-                        "LANE_SESSION_TOKEN": task.session_token,
-                        "LANE_BASE_URL": task.env_base_url,
-                    },
-                }
+    def _write_mcp_config_snapshot(self, task: AdapterRunInput, attempt_dir: Path) -> None:
+        servers: dict[str, Any] = {}
+        for spec in task.mcp_servers:
+            command, args = self._mcp_command_and_args(task, spec)
+            server: dict[str, Any] = {
+                "command": command,
+                "args": args,
+                "env": {
+                    "LANE_ATTEMPT_ID": task.attempt_id,
+                    "LANE_SESSION_TOKEN": task.session_token,
+                    "LANE_BASE_URL": task.env_base_url,
+                },
             }
-        }
+            if spec.cwd:
+                server["cwd"] = spec.cwd
+            servers[spec.name] = server
+        config = {"mcp_servers": servers}
         (attempt_dir / "codex_mcp_config.json").write_text(
             json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 
-    def _render_prompt(self, task: AdapterRunInput, server_name: str) -> str:
-        parts = [
-            "You are completing an agent-lane benchmark task.",
-            f"You must use the tools exposed by the MCP server `{server_name}`.",
-            "",
-            "Task:",
-            task.task_prompt,
-        ]
+    def _render_prompt(self, task: AdapterRunInput) -> str:
+        # The adapter does not prescribe a solving method — MCP is only one
+        # option among whatever the agent brings natively.
+        parts = [task.task_prompt]
         context = prompt_context(task.task_context) if task.task_context else {}
         if context:
             parts.append("")

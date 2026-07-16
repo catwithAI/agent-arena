@@ -90,10 +90,13 @@ class SshClaudeCodeAdapter:
         prompt_text = self._render_prompt(task)
         (attempt_dir / "prompt.txt").write_text(prompt_text, encoding="utf-8")
 
-        mcp_config = self._build_mcp_config(task, self.project_path)
-        (attempt_dir / "mcp_config.json").write_text(
-            json.dumps(mcp_config, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        mcp_config_path: Path | None = None
+        if task.mcp_servers:
+            mcp_config = self._build_mcp_config(task, self.project_path)
+            mcp_config_path = attempt_dir / "mcp_config.json"
+            mcp_config_path.write_text(
+                json.dumps(mcp_config, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
 
         events_count = 0
         thinking_count = 0
@@ -119,8 +122,11 @@ class SshClaudeCodeAdapter:
                 )
 
             # 2. SCP files to remote
-            mcp_server_path = f"{self.project_path}/envs/{task.env_name}/mcp_server.py"
-            upload_ok = await self._upload_files(task, attempt_dir, mcp_server_path, remote_dir)
+            mcp_server_path = self._declared_mcp_script(task)
+            upload_ok = await self._upload_files(
+                task, attempt_dir, mcp_server_path, remote_dir,
+                include_mcp_config=mcp_config_path is not None,
+            )
             if not upload_ok:
                 return AdapterResult(
                     attempt_id=task.attempt_id,
@@ -144,10 +150,14 @@ class SshClaudeCodeAdapter:
                 )
 
             # 3. SSH execute claude CLI
+            mcp_arg = (
+                f"--mcp-config {remote_dir}/mcp_config.json "
+                if mcp_config_path is not None else ""
+            )
             claude_cmd = (
                 f"cd {remote_dir} && cat prompt.txt | claude -p - "
                 f"--output-format stream-json --verbose "
-                f"--mcp-config {remote_dir}/mcp_config.json "
+                f"{mcp_arg}"
                 f"--dangerously-skip-permissions "
                 f"--max-turns 50"
             )
@@ -274,10 +284,13 @@ class SshClaudeCodeAdapter:
         )
 
     def _build_mcp_config(self, task: AdapterRunInput, project_path: str) -> dict:
+        if len(task.mcp_servers) != 1:
+            raise ValueError("SSH Claude adapter only supports exactly one declared MCP server")
+        spec = task.mcp_servers[0]
         remote_dir = f"{REMOTE_BASE_DIR}/{task.attempt_id}"
         return {
             "mcpServers": {
-                f"lane-{task.env_name}": {
+                spec.name: {
                     "command": REMOTE_MCP_PYTHON,
                     "args": [f"{remote_dir}/mcp_server.py"],
                     "env": {
@@ -290,19 +303,37 @@ class SshClaudeCodeAdapter:
         }
 
     def _render_prompt(self, task: AdapterRunInput) -> str:
-        parts = [
-            f"You are completing an agent-lane benchmark task. Use the tools "
-            f"exposed by the `lane-{task.env_name}` MCP server to complete it.",
-            "",
-            "Task:",
-            task.task_prompt,
-        ]
+        parts = [task.task_prompt]
         context = prompt_context(task.task_context) if task.task_context else {}
         if context:
             parts.append("")
             parts.append("Context:")
             parts.append(json.dumps(context, ensure_ascii=False, indent=2))
         return "\n".join(parts)
+
+    def _declared_mcp_script(self, task: AdapterRunInput) -> str | None:
+        """Only upload the Python entrypoint named in the scenario's
+        declared command — never guess a path from env_name."""
+        if not task.mcp_servers:
+            return None
+        if len(task.mcp_servers) != 1:
+            raise ValueError("SSH Claude adapter only supports exactly one declared MCP server")
+        spec = task.mcp_servers[0]
+        for arg in reversed(spec.args):
+            if arg.endswith(".py"):
+                path = Path(arg)
+                if not path.is_absolute():
+                    path = Path(spec.cwd or self.project_path) / path
+                    # A declared cwd may point at another machine's path (or
+                    # be omitted); fall back to resolving the relative entry
+                    # against this adapter's own project path so migrated/
+                    # test-time declarations remain portable.
+                    if not path.is_file():
+                        candidate = Path(self.project_path) / arg
+                        if candidate.is_file():
+                            path = candidate
+                return str(path.resolve())
+        raise ValueError("SSH Claude adapter requires the declared MCP command to include a Python script entrypoint")
 
     async def _ssh_exec(self, cmd: str) -> int:
         proc = await asyncio.create_subprocess_exec(
@@ -320,14 +351,20 @@ class SshClaudeCodeAdapter:
         self,
         task: AdapterRunInput,
         attempt_dir: Path,
-        mcp_server_path: str,
+        mcp_server_path: str | None,
         remote_dir: str,
+        *,
+        include_mcp_config: bool,
     ) -> bool:
         files = [
             (str(attempt_dir / "prompt.txt"), f"{remote_dir}/prompt.txt"),
-            (str(attempt_dir / "mcp_config.json"), f"{remote_dir}/mcp_config.json"),
-            (mcp_server_path, f"{remote_dir}/mcp_server.py"),
         ]
+        if include_mcp_config:
+            assert mcp_server_path is not None
+            files += [
+                (str(attempt_dir / "mcp_config.json"), f"{remote_dir}/mcp_config.json"),
+                (mcp_server_path, f"{remote_dir}/mcp_server.py"),
+            ]
         for local, remote in files:
             proc = await asyncio.create_subprocess_exec(
                 "sshpass", "-p", self.ssh_password,

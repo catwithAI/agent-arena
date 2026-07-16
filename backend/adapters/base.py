@@ -38,6 +38,22 @@ def build_security_meta(
 
 
 @dataclass
+class McpServerSpec:
+    """An MCP stdio entrypoint explicitly declared by a scenario's meta.yaml.
+
+    Adapters translate this into whatever config shape the target CLI wants;
+    they must never guess or synthesize a server from `env_name` alone.
+    `cwd` is the directory the scenario's command should be resolved/run
+    relative to.
+    """
+
+    name: str
+    command: str
+    args: tuple[str, ...] = ()
+    cwd: str | None = None
+
+
+@dataclass
 class AdapterRunInput:
     """Minimal input for a single attempt.
 
@@ -59,6 +75,10 @@ class AdapterRunInput:
     env_skill_id: str  # "lane/<env_name>"
     session_token: str  # plaintext, only used to authorize the MCP tool server
     env_base_url: str  # public address of the attempt server (agent-reachable)
+    # Explicitly declared by the scenario's meta.yaml (`entrypoints.mcp`); an
+    # empty tuple means the scenario provides no MCP server. Adapters must
+    # not infer or fabricate a server from env_name.
+    mcp_servers: tuple[McpServerSpec, ...] = ()
     # Wire observability injection (backend/wire/), merged by dispatch before
     # the adapter runs. Defaults to a no-op injection so adapters that don't
     # care about wire capture behave exactly as before it existed.
