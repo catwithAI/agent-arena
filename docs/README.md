@@ -1,4 +1,4 @@
-# agent-lane
+# agent-arena
 
 An open benchmark harness for comparing coding agents on the same tasks.
 
@@ -51,7 +51,7 @@ Python 3.11+ / FastAPI / SQLite / uv (backend) — React + Vite + TypeScript
 
 ```bash
 uv sync
-cp agentlane.yaml.example agentlane.yaml   # edit if you need non-default paths
+cp arena.yaml.example arena.yaml   # edit if you need non-default paths
 uv run uvicorn backend.main:create_app --factory --port 8100
 
 cd web && npm install && npm run dev

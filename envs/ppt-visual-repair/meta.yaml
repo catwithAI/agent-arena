@@ -12,7 +12,7 @@ prerequisites:
   requires:
     - "LibreOffice/soffice（office_render）"
     - "PyMuPDF/fitz（pdf→png）"
-    - "ANTHROPIC_API_KEY 环境变量（或 agentlane.yaml 配置的等效 judge key）"
+    - "ANTHROPIC_API_KEY 环境变量（或 arena.yaml 配置的等效 judge key）"
     - "支持图片检查的 llm_judge.model，默认使用 Anthropic 的当前 Claude 模型"
   on_missing: "缺 soffice → office_render=0 且 previews 为 None 导致 judge 被跳过；缺 Judge 配置 → llm_visual_judge=0（占 80%）"
 

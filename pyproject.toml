@@ -1,5 +1,5 @@
 [project]
-name = "agent-lane"
+name = "agent-arena"
 version = "0.1.0"
 description = "Open benchmark harness for comparing coding agents (Claude Code, Codex, and any custom agent) on the same tasks"
 readme = "README.md"

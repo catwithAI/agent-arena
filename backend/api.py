@@ -2,9 +2,11 @@
 
 - `GET /agents` — lists agents this instance can dispatch to right now:
   the built-in `claude-code` / `codex` adapters plus anything declared under
-  `custom_agents` in `agentlane.yaml`.
+  `custom_agents` in `arena.yaml`.
 - `GET /models/providers` — third-party model provider names configured for
   claude-code/codex (never exposes base_url/api_key_env values).
+- `GET /openrouter/models` — full OpenRouter model catalog (bare model ids),
+  cached with TTL; used to power the model search dropdown in the UI.
 - `POST /runs` — create a comparison run: one attempt per requested agent,
   dispatched concurrently in the background.
 - `GET /runs` / `GET /runs/{id}` / `GET /runs/{id}/attempts/{aid}` — history
@@ -18,11 +20,14 @@ import contextlib
 import copy
 import json
 import logging
+import os
 import shutil
+import time
 import uuid
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
@@ -478,6 +483,60 @@ def _attempt_change_signature(attempt_dir: Path) -> tuple[Any, ...]:
     return tuple(signature)
 
 
+# OpenRouter 全量模型列表：给模型下拉列裸模型名。几百个模型 + 接口有延迟，
+# 模块级 TTL 缓存 + Lock 防并发穿透；失败时回退旧缓存（stale-while-error）。
+_OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+_OR_CACHE_TTL_SECONDS = 600.0
+_or_models_cache: dict[str, Any] = {"data": None, "expires_at": 0.0}
+_or_models_lock = asyncio.Lock()
+
+
+async def _openrouter_models() -> dict[str, Any]:
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        return {"models": [], "error": "OPENROUTER_API_KEY not set"}
+    now = time.monotonic()
+    cached = _or_models_cache.get("data")
+    if cached is not None and _or_models_cache.get("expires_at", 0.0) > now:
+        return {"models": cached, "error": None}
+    async with _or_models_lock:
+        now = time.monotonic()
+        cached = _or_models_cache.get("data")
+        if cached is not None and _or_models_cache.get("expires_at", 0.0) > now:
+            return {"models": cached, "error": None}
+        try:
+            async with httpx.AsyncClient(
+                timeout=10.0,
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {api_key}",
+                },
+            ) as cli:
+                resp = await cli.get(_OPENROUTER_MODELS_URL)
+            resp.raise_for_status()
+            data = resp.json()
+            raw = data.get("data") if isinstance(data, dict) else None
+            if not isinstance(raw, list):
+                raise TypeError("unexpected OpenRouter models response")
+            models = [
+                {
+                    "id": m["id"],
+                    "name": m.get("name") or m["id"],
+                    "context_length": m.get("context_length"),
+                }
+                for m in raw
+                if isinstance(m, dict) and isinstance(m.get("id"), str)
+            ]
+            _or_models_cache["data"] = models
+            _or_models_cache["expires_at"] = now + _OR_CACHE_TTL_SECONDS
+            return {"models": models, "error": None}
+        except Exception as exc:
+            if cached is not None:
+                logger.warning("openrouter models fetch failed, serving stale: %s", exc)
+                return {"models": cached, "error": None, "stale": True}
+            return {"models": [], "error": str(exc)}
+
+
 # ---------- routes -------------------------------------------------------------
 
 
@@ -495,6 +554,12 @@ def build_router() -> APIRouter:
             "providers": sorted(settings.model_providers.keys()),
             "suggested": settings.model_suggestions,
         }
+
+    @router.get("/openrouter/models")
+    async def openrouter_models(request: Request) -> dict[str, Any]:
+        """OpenRouter 全量模型（裸模型名）。模型下拉数据源；缓存见
+        _openrouter_models。key 走进程环境变量 OPENROUTER_API_KEY，响应不含 key。"""
+        return await _openrouter_models()
 
     @router.get("/envs")
     async def list_envs() -> list[dict[str, Any]]:

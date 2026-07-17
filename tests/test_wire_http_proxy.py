@@ -1,4 +1,4 @@
-"""W4-1/W4-3：agent-lane reverse HTTP capture proxy 转发正确性 + timing/blob。
+"""W4-1/W4-3：agent-arena reverse HTTP capture proxy 转发正确性 + timing/blob。
 
 用 httpx.MockTransport 做 in-process fake upstream，直接驱动 http_proxy.forward()：
 - 流式/非流式转发透明（status/body 原样透传）；

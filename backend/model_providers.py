@@ -19,7 +19,7 @@ class ModelProviderSection(BaseModel):
     kind: Literal["anthropic", "openai-chat", "openai-responses"] = "anthropic"
     base_url: str
     api_key_env: str | None = None
-    # Key filled in directly (agentlane.yaml is gitignored, so it's safe to
+    # Key filled in directly (arena.yaml is gitignored, so it's safe to
     # put a real secret here). Resolution order lives in resolve_api_key:
     # the env var wins when set, this is the fallback. Avoids "the process
     # that spawned the backend forgot to export the key" surprises.

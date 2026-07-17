@@ -1,4 +1,4 @@
-# agent-lane
+# agent-arena
 
 [English](README.md)
 
@@ -11,11 +11,16 @@
 （agent 暴露出来的 thinking 轨迹，如果有的话）、最终产物（分数、代码、
 产物文件）——可以并排比较任意数量的 agent。
 
+这是一个面向大众的开源项目，不局限于 Claude Code 和 Codex —— adapter
+接口的设计目标就是让任意 agent（开源、商业、或研究原型）都能接入。项目
+也会朝着支持更大规模的方向演进：并发运行 N 个 agent、每个任务重复跑多
+轮试验，从而得到统计意义上可靠的评测结果，而不是单次跑分的偶然结果。
+
 ## 快速开始
 
 ```bash
 uv sync
-cp agentlane.yaml.example agentlane.yaml   # 本地单机场景默认配置即可用
+cp arena.yaml.example arena.yaml   # 本地单机场景默认配置即可用
 uv run uvicorn backend.main:create_app --factory --port 8100
 
 cd web && npm install && npm run dev
@@ -25,9 +30,9 @@ cd web && npm install && npm run dev
 的 agent（`claude-code`/`codex` 需要在 `PATH` 中），然后运行。
 
 如果要让 claude-code/codex 走第三方 model provider（见
-`agentlane.yaml.example` 里的 `model_providers`），启动后端前请确保对应的
+`arena.yaml.example` 里的 `model_providers`），启动后端前请确保对应的
 API key 可用：要么把 `api_key_env` 指定的环境变量导出（`cp .env.example
-.env`，填好之后 `source .env`），要么直接把 key 填到 `agentlane.yaml` 里
+.env`，填好之后 `source .env`），要么直接把 key 填到 `arena.yaml` 里
 该 provider 的 `api_key` 字段（该文件已 gitignore）。如果某个 run 引用的
 provider 两边都没配置 key，评测会立刻以清晰的 `provider_api_key_missing`
 错误失败，而不是让 CLI 报一个让人摸不着头脑的登录错误。

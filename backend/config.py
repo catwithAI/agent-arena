@@ -1,4 +1,4 @@
-"""agent-lane backend configuration.
+"""agent-arena backend configuration.
 
 Contract:
 - `load_settings()` returns a `Settings`
@@ -23,11 +23,11 @@ from .model_providers import ModelProviderSection
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = Path("agentlane.yaml")
+DEFAULT_CONFIG_PATH = Path("arena.yaml")
 
 
 class CustomAgentSection(BaseModel):
-    """Config-only way to plug an arbitrary CLI-based agent into agent-lane.
+    """Config-only way to plug an arbitrary CLI-based agent into agent-arena.
     See backend/adapters/custom_cli.py for the full field reference."""
 
     command: list[str]
@@ -68,7 +68,7 @@ class LaneSection(BaseModel):
 
     # Wire observability (backend/wire/): captures the raw HTTP/MCP traffic
     # between agent and model/tools for the trace viewer. Disabled by default
-    # since agent-lane has no per-user auth yet — knowing a run/attempt ID is
+    # since agent-arena has no per-user auth yet — knowing a run/attempt ID is
     # enough to call the API, so parsed/full request bodies stay off until a
     # permission model exists. env: LANE_WIRE_BLOB_API_ENABLED
     wire_blob_api_enabled: bool = False
@@ -89,7 +89,7 @@ class Settings(BaseModel):
     # still works).
     model_suggestions: list[str] = Field(default_factory=list)
     # Any other CLI-based agent, keyed by the agent name used in `POST
-    # /runs`. This is how third parties bring their own agent to agent-lane
+    # /runs`. This is how third parties bring their own agent to agent-arena
     # without writing a Python adapter.
     custom_agents: dict[str, CustomAgentSection] = Field(default_factory=dict)
     # Optional: Claude Code over SSH on a remote machine, registered as the
@@ -155,4 +155,4 @@ def _log_settings(settings: Settings) -> None:
         "model_providers": {name: p.kind for name, p in settings.model_providers.items()},
         "ssh_claude_code_enabled": settings.ssh_claude_code.ssh_host is not None,
     }
-    logger.info("agent-lane settings: %s", safe)
+    logger.info("agent-arena settings: %s", safe)

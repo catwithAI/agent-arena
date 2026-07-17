@@ -2,7 +2,7 @@
 
 覆盖：
 - resolve_api_key：环境变量优先，未设时回落到 ModelProviderSection.api_key
-  （agentlane.yaml 直填，已 gitignore）；两者皆无返回 None。
+  （arena.yaml 直填，已 gitignore）；两者皆无返回 None。
 - provider 命中但 env/config 都没 key 时，ClaudeCodeAdapter / CodexAdapter 直接
   返回 auth_failed + provider_api_key_missing，不启子进程——避免 CLI 自己报
   「Not logged in」/「Missing environment variable」这类让人摸不着头脑的错误。
@@ -84,7 +84,7 @@ def test_resolve_api_key_no_env_configured():
 
 
 def test_resolve_api_key_falls_back_to_config(monkeypatch):
-    """env 未设时回落到 agentlane.yaml 直填的 api_key。"""
+    """env 未设时回落到 arena.yaml 直填的 api_key。"""
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     p = ModelProviderSection(
         kind="openai-chat", base_url="x",

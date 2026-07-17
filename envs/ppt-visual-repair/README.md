@@ -30,7 +30,7 @@ Opening and re-saving the draft does not count as visual improvement. The judge 
 
 The judge calls the Anthropic Messages API directly (multimodal request with
 the three PNG previews attached as image blocks — no external agent session).
-Config is read from `agentlane.yaml`:
+Config is read from `arena.yaml`:
 
 ```yaml
 ppt_visual_repair:

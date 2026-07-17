@@ -128,7 +128,7 @@ def run_visual_judge(
         return {
             "ok": False,
             "skipped": True,
-            "error": "judge is not configured; set agentlane.yaml llm_judge or PPT_JUDGE_*/ANTHROPIC_API_KEY env vars",
+            "error": "judge is not configured; set arena.yaml llm_judge or PPT_JUDGE_*/ANTHROPIC_API_KEY env vars",
             "score_100": 0,
         }
 
@@ -527,7 +527,7 @@ def _repo_root() -> Path:
 
 
 def _load_yaml_config() -> dict[str, Any]:
-    path = Path(os.environ.get("LANE_CONFIG_PATH") or _repo_root() / "agentlane.yaml")
+    path = Path(os.environ.get("LANE_CONFIG_PATH") or _repo_root() / "arena.yaml")
     if not path.is_file():
         return {}
     try:

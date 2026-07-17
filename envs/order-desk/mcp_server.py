@@ -5,12 +5,12 @@ so trace files line up regardless of which agent ran. Does not import
 core.py directly.
 
 Launched by the adapter (see `claude --mcp-config` / codex `-c mcp_servers.*`):
-    uv run --project /path/to/agent-lane python envs/order-desk/mcp_server.py
+    uv run --project /path/to/agent-arena python envs/order-desk/mcp_server.py
 
 Environment variables:
     LANE_ATTEMPT_ID    — current attempt id
     LANE_SESSION_TOKEN — bearer token for the attempt server
-    LANE_BASE_URL      — agent-lane backend address (e.g. http://127.0.0.1:8100)
+    LANE_BASE_URL      — agent-arena backend address (e.g. http://127.0.0.1:8100)
 """
 
 from __future__ import annotations

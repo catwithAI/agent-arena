@@ -2,7 +2,7 @@
 
 这是 lifecycle 的 `CaptureSource`（design §8.1）——只负责在 agent 启动前生成
 injection：签发短期 capture token、构造 attempt-scoped proxy base URL，让 adapter
-把模型请求打到 agent-lane 内部反代（`proxy_api.py` 的 `/internal/wire-proxy/...`）。
+把模型请求打到 agent-arena 内部反代（`proxy_api.py` 的 `/internal/wire-proxy/...`）。
 真实转发/采集由 `http_proxy.py` 的被动 `forward` 完成。
 
 能力边界（评审 #9 选项 A）：只用于 **CC/Codex 且模型是命名第三方 provider** 的

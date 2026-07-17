@@ -12,6 +12,6 @@ Judge 使用严格的二元判定对每条官方 rubric 评分：完全满足的
 均保存在对应 attempt 的 `private_eval/gdpval_rubric_judge/` 目录中。
 
 配置默认读取 `ANTHROPIC_API_KEY` 环境变量和内置默认模型。可以通过
-`agentlane.yaml` 中的 `gdpval_prepaid_amortization_official.judge` 配置段
+`arena.yaml` 中的 `gdpval_prepaid_amortization_official.judge` 配置段
 （`api_key` / `base_url` / `model` / `timeout`），或 `GDPVAL_JUDGE_*` 环境变量
 进行覆盖。

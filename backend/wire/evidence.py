@@ -164,7 +164,7 @@ class AggregateUsagePayload(_Strict):
 
 class HttpExchangePayload(_Strict):
     # direction 由 source 声明（inbound=Env Server 收到工具请求，
-    # outbound=agent-lane 发往 provider）。这是 v1 内的**追加可选字段**（默认
+    # outbound=agent-arena 发往 provider）。这是 v1 内的**追加可选字段**（默认
     # None）——旧 v1 http_exchange 不带此键仍能 validate，finalizer fallback
     # 到 outbound（评审 B4：不做破坏性 schema 变更、不需升 version）。
     direction: Literal["inbound", "outbound"] | None = None

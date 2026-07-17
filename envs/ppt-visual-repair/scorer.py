@@ -1,7 +1,7 @@
 """Scorer for the PPT visual repair env.
 
 All Office rendering and LLM-as-judge logic is intentionally local to this env
-so the agent-lane platform core remains unchanged.
+so the agent-arena platform core remains unchanged.
 """
 
 from __future__ import annotations

@@ -6,7 +6,7 @@ __pycache__/
 *.egg-info/
 
 # local config with real endpoints / API keys — never commit
-agentlane.yaml
+arena.yaml
 .env
 
 # local-only notes, never committed

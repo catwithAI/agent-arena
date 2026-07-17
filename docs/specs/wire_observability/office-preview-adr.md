@@ -6,7 +6,7 @@
 
 ## Decision
 
-Office files are untrusted business artifacts. agent-lane will classify and render them on the server;
+Office files are untrusted business artifacts. agent-arena will classify and render them on the server;
 the browser never receives an OOXML ZIP as text and never executes formulas, macros, embedded
 objects, scripts, data connections, or external relationships.
 
@@ -60,7 +60,7 @@ background job and descriptor polling (`status=rendering`, `poll_after_ms`); W7 
 than adding another SSE protocol. A worker has a renderer-specific hard timeout (15 seconds for the
 current structural XLSX worker; at most 60 seconds for future converters) and deployment-enforced CPU,
 memory, process, filesystem and no-network limits. If those isolation controls or the renderer are not
-available, the descriptor reports `unsupported`/`renderer_unavailable`; agent-lane must not silently run
+available, the descriptor reports `unsupported`/`renderer_unavailable`; agent-arena must not silently run
 an unsandboxed converter.
 
 Every ZIP member is checked for absolute paths and `..` traversal before reads. External relationships

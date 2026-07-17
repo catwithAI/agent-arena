@@ -281,7 +281,7 @@ m9→W1-6，m10→W0-4，nit4→W0-5，nit5→W0-6。
 
 - [x] **W3-3 CC/Codex command rewrite 接线**　★★
   - 经 W0-4 的 injection 钩子改写 MCP command（design §12.1,`--phase agent_run`
-    显式传入);只包 agent-lane 注入的 server,不动用户全局 MCP 配置。
+    显式传入);只包 agent-arena 注入的 server,不动用户全局 MCP 配置。
   - _验收：集成测试 —— 真实 env MCP server 包装前后工具行为等价（复用 t14 链路);
     tool call/result 的 size/truncated 至少一条可见;timeout/cancel 后无残留 wrapper
     或 MCP 子进程；若双方存在同一显式 tool ID 则精确对齐，否则保留基于 tool name/顺序/
@@ -306,7 +306,7 @@ dispatch `_build_wire_sources` 给 CC/Codex 挂）；finalize `_associate_mcp_tr
 capture fail-open、rewrite、trajectory 关联。后端 mcp/normalizer/manifest 全绿。
 **W3-1~3 达成 → 最小完成目标（§28：W0+W1+(W2或W4)+W3-1~3+W1-8/9）齐了。**
 
-## W4 · agent-lane reverse HTTP capture（design §23 Phase 4,系统编程风险区）
+## W4 · agent-arena reverse HTTP capture（design §23 Phase 4,系统编程风险区）
 
 - [x] **W4-1 反向代理骨架 + 转发正确性**　★★★（W4-4 后执行，验证转发不改变行为）
   - `backend/wire/sources/http_proxy.py` + `api.py` 内部路由
@@ -438,7 +438,7 @@ provider 的 comparison run 会自动采集并把 hop 桥接到 native call。W4
 ## W5 · Sandbox transparent redirect spike（design §23 Phase 5,高风险)
 
 - [ ] **W5-1 沙盒透明重定向 spike（metadata 档）**　★★★（时间盒)
-  - 仅在 agent-lane 可控 container 拓扑下:shared-netns sidecar + nftables redirect
+  - 仅在 agent-arena 可控 container 拓扑下:shared-netns sidecar + nftables redirect
     (design §14.1,不改宿主机全局 nftables);metadata 档 SNI/target 元数据不解 TLS。
   - _验收：spike 报告 —— 受控容器内出站 TCP 被无感重定向、采到连接元数据;
     task 显式声明 network_mode 的 service 列入 manifest excluded、coverage 不报
@@ -1031,7 +1031,7 @@ Blocking×1 + Major×4，全部修复；wire 测试 218 passed。
 对照实验（隔离 CODEX_HOME，同一 prompt，ephemeral vs 非 ephemeral，均带真实
 auth+config）结论已写入 design §27.1。核心事实：
 
-- `--ephemeral`（agent-lane 现状）**不生成** session rollout JSONL；非 ephemeral
+- `--ephemeral`（agent-arena 现状）**不生成** session rollout JSONL；非 ephemeral
   生成 `sessions/.../rollout-*.jsonl`；两者可见结果（agent_message 文本）等价。
 - `codex exec --json` stdout 每次 exec 仅 1 个 `turn.completed`（整个 turn 累计
   usage），20-40 个 agent_message（≈逐次 API call）**不带 per-call usage**——
