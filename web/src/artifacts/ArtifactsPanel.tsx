@@ -420,7 +420,7 @@ export function ArtifactsPanel({
 
   return (
     <div className="artifacts-panel">
-      {steps.length === 0 && <p className="muted">No artifacts.</p>}
+      {steps.length === 0 && <p className="muted">暂无产物文件。</p>}
       {steps.map((s) => (
         <div key={s.step}>
           <p className="muted" onClick={() => setOpenStep(openStep === s.step ? null : s.step)} style={{ cursor: "pointer" }}>

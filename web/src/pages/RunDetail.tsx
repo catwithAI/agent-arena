@@ -108,7 +108,7 @@ function parseEvents(events: Array<Record<string, unknown>>): EventBlock[] {
 
 function Transcript({ events }: { events: Array<Record<string, unknown>> }) {
   const blocks = parseEvents(events);
-  if (blocks.length === 0) return <p className="muted">No transcript recorded.</p>;
+  if (blocks.length === 0) return <p className="muted">暂无对话记录。</p>;
   return (
     <div className="transcript">
       {blocks.map((b, i) => {
@@ -136,10 +136,38 @@ function Transcript({ events }: { events: Array<Record<string, unknown>> }) {
   );
 }
 
-function AttemptColumn({ runId, attempt }: { runId: string; attempt: AttemptSummary }) {
+// ── shared attempt helpers ──
+
+type TabKey = "transcript" | "scores" | "artifacts" | "wire";
+
+const TABS: Array<{ key: TabKey; label: string }> = [
+  { key: "transcript", label: "对话记录" },
+  { key: "scores", label: "评分" },
+  { key: "artifacts", label: "产物" },
+  { key: "wire", label: "通信详情" },
+];
+
+const ACTIVE_STATUSES = ["queued", "running"];
+
+function isActive(status: string): boolean {
+  return ACTIVE_STATUSES.includes(status);
+}
+
+function fmtDuration(ms: number): string {
+  if (!ms) return "—";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
+}
+
+function fmtCost(cost: number | null | undefined): string | null {
+  if (cost === null || cost === undefined) return null;
+  return `$${cost.toFixed(3)}`;
+}
+
+function useAttemptDetail(runId: string, attempt: AttemptSummary) {
   const [detail, setDetail] = useState<AttemptDetail | null>(null);
   const [artifacts, setArtifacts] = useState<ArtifactStep[]>([]);
-  const [tab, setTab] = useState<"transcript" | "scores" | "artifacts" | "wire">("transcript");
 
   const load = useCallback(() => {
     api.getAttempt(runId, attempt.id).then(setDetail);
@@ -148,69 +176,246 @@ function AttemptColumn({ runId, attempt }: { runId: string; attempt: AttemptSumm
 
   useEffect(() => {
     load();
-    const isTerminal = !["queued", "running"].includes(attempt.status);
-    if (isTerminal) return;
+    if (!isActive(attempt.status)) return;
     const iv = setInterval(load, 3000);
     return () => clearInterval(iv);
   }, [load, attempt.status]);
 
+  return { detail, artifacts };
+}
+
+function dotClass(attempt: AttemptSummary, leader: boolean): string {
+  if (isActive(attempt.status)) return "rank-dot busy";
+  if (attempt.status !== "completed") return "rank-dot bad";
+  if (leader) return "rank-dot ok";
+  return "rank-dot";
+}
+
+function AttemptTabBody({
+  runId,
+  attempt,
+  tab,
+  detail,
+  artifacts,
+}: {
+  runId: string;
+  attempt: AttemptSummary;
+  tab: TabKey;
+  detail: AttemptDetail | null;
+  artifacts: ArtifactStep[];
+}) {
+  if (tab === "transcript") {
+    if (!detail) return <p className="muted">加载中…</p>;
+    if (detail.events.length === 0 && isActive(attempt.status))
+      return <div className="mx-empty">刚启动，等待第一次事件…</div>;
+    return <Transcript events={detail.events} />;
+  }
+  if (tab === "scores") {
+    if (!detail) return <p className="muted">加载中…</p>;
+    return (
+      <div className="score-list">
+        {detail.scores.length === 0 && <p className="muted">暂无评分。</p>}
+        {detail.scores.map((s) => (
+          <div key={s.dimension}>
+            <strong>{s.dimension}</strong>: {s.value} — <span className="muted">{s.detail}</span>
+          </div>
+        ))}
+        <p className="muted" style={{ marginTop: "0.5rem" }}>
+          execution_locus={detail.execution.execution_locus ?? "—"} · permission_mode=
+          {detail.execution.permission_mode ?? "—"}
+        </p>
+      </div>
+    );
+  }
+  if (tab === "artifacts") {
+    if (artifacts.length === 0 && isActive(attempt.status))
+      return <div className="mx-empty">尚未导出产物，agent 仍在执行中</div>;
+    return <ArtifactsPanel runId={runId} attemptId={attempt.id} steps={artifacts} />;
+  }
+  return <WirePanel runId={runId} attemptId={attempt.id} label={attempt.agent_name} />;
+}
+
+function attemptStatLine(attempt: AttemptSummary, detail: AttemptDetail | null) {
   const tokenUsage = detail?.token_usage ?? {};
+  const cost = fmtCost(attempt.cost_estimate);
+  return (
+    <>
+      <span>
+        <b>model</b> {detail?.model_used ?? attempt.model ?? "—"}
+      </span>
+      <span>
+        <b>时长</b> {fmtDuration(attempt.duration_ms)}
+      </span>
+      {cost && (
+        <span>
+          <b>成本</b> {cost}
+        </span>
+      )}
+      <span>
+        <b>tokens</b> in {tokenUsage.input_tokens ?? 0} / out {tokenUsage.output_tokens ?? 0}
+      </span>
+      {isActive(attempt.status) && (
+        <span className="mx-running-pulse">
+          <span className="dot" />
+          {attempt.status}
+        </span>
+      )}
+    </>
+  );
+}
+
+// ── rank view: expanded rack under the leaderboard ──
+
+function AttemptRack({
+  runId,
+  attempt,
+  rank,
+  leader,
+}: {
+  runId: string;
+  attempt: AttemptSummary;
+  rank: number | null;
+  leader: boolean;
+}) {
+  const [tab, setTab] = useState<TabKey>("transcript");
+  const { detail, artifacts } = useAttemptDetail(runId, attempt);
 
   return (
-    <div className="panel">
-      <h3>
-        {attempt.agent_name} <span className={`badge ${attempt.status}`}>{attempt.status}</span>
-      </h3>
-      <p className="muted">
-        model={detail?.model_used ?? attempt.model ?? "—"} · score={attempt.score_total ?? "—"} · {attempt.duration_ms}ms ·
-        tokens in={tokenUsage.input_tokens ?? 0} out={tokenUsage.output_tokens ?? 0}
-      </p>
-      {attempt.error_message && <div className="error-box">{attempt.error_message}</div>}
-
-      <div className="checkbox-row" style={{ marginBottom: "0.5rem" }}>
-        <button className={tab === "transcript" ? "" : "secondary"} onClick={() => setTab("transcript")}>
-          Transcript
-        </button>
-        <button className={tab === "scores" ? "" : "secondary"} onClick={() => setTab("scores")}>
-          Scores
-        </button>
-        <button className={tab === "artifacts" ? "" : "secondary"} onClick={() => setTab("artifacts")}>
-          Artifacts
-        </button>
-        <button className={tab === "wire" ? "" : "secondary"} onClick={() => setTab("wire")}>
-          Wire
-        </button>
+    <div className={`rack${leader ? " leader" : ""}`}>
+      <div className="rack-head">
+        <span className="rack-name">
+          <span className={dotClass(attempt, leader)} />
+          {attempt.agent_name}
+          {rank !== null && <span className="mx-rank">#{rank}</span>}
+        </span>
+        <span className={`state-tag ${attempt.status}`}>{attempt.status}</span>
       </div>
-
-      {tab === "transcript" && detail && <Transcript events={detail.events} />}
-      {tab === "scores" && detail && (
-        <div className="score-list">
-          {detail.scores.length === 0 && <p className="muted">No scores yet.</p>}
-          {detail.scores.map((s) => (
-            <div key={s.dimension}>
-              <strong>{s.dimension}</strong>: {s.value} — <span className="muted">{s.detail}</span>
-            </div>
-          ))}
-          <p className="muted" style={{ marginTop: "0.5rem" }}>
-            execution_locus={detail.execution.execution_locus ?? "—"} · permission_mode=
-            {detail.execution.permission_mode ?? "—"}
-          </p>
+      <div className="rack-stats">{attemptStatLine(attempt, detail)}</div>
+      {attempt.error_message && (
+        <div className="rack-body" style={{ paddingBottom: 0 }}>
+          <div className="error-box">{attempt.error_message}</div>
         </div>
       )}
-      {tab === "artifacts" && (
-        <ArtifactsPanel runId={runId} attemptId={attempt.id} steps={artifacts} />
-      )}
-      {tab === "wire" && (
-        <WirePanel runId={runId} attemptId={attempt.id} label={attempt.agent_name} />
-      )}
+      <div className="tab-row">
+        {TABS.map((t) => (
+          <button key={t.key} className={tab === t.key ? "active" : ""} onClick={() => setTab(t.key)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="rack-body">
+        <AttemptTabBody runId={runId} attempt={attempt} tab={tab} detail={detail} artifacts={artifacts} />
+      </div>
     </div>
   );
 }
+
+// ── matrix view: all attempts side by side with one synced tab ──
+
+function MatrixCell({
+  runId,
+  attempt,
+  rank,
+  leader,
+  tab,
+}: {
+  runId: string;
+  attempt: AttemptSummary;
+  rank: number | null;
+  leader: boolean;
+  tab: TabKey;
+}) {
+  const { detail, artifacts } = useAttemptDetail(runId, attempt);
+
+  return (
+    <div className={`mx-cell${leader ? " leader" : ""}`}>
+      <div className="mx-head">
+        <span className="mx-name">
+          <span className={dotClass(attempt, leader)} />
+          {attempt.agent_name}
+        </span>
+        <span className="mx-rank">
+          {rank !== null ? `#${rank} · ${attempt.score_total}` : attempt.status}
+        </span>
+      </div>
+      <div className="mx-stats">{attemptStatLine(attempt, detail)}</div>
+      <div className="mx-body">
+        {attempt.error_message && <div className="error-box">{attempt.error_message}</div>}
+        <AttemptTabBody runId={runId} attempt={attempt} tab={tab} detail={detail} artifacts={artifacts} />
+      </div>
+    </div>
+  );
+}
+
+// ── leaderboard row ──
+
+function RankRow({
+  attempt,
+  rank,
+  leader,
+  open,
+  onToggle,
+}: {
+  attempt: AttemptSummary;
+  rank: number | null;
+  leader: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const busy = isActive(attempt.status);
+  const failed = !busy && attempt.status !== "completed";
+  const cost = fmtCost(attempt.cost_estimate);
+  const rowClass = [
+    "rankrow",
+    leader ? "leader" : "",
+    busy ? "busy" : "",
+    failed ? "bad" : "",
+    open ? "open" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div className={rowClass} onClick={onToggle}>
+      <div className="rank-num">{rank !== null ? String(rank).padStart(2, "0") : "—"}</div>
+      <div className="rank-agent">
+        <span className={dotClass(attempt, leader)} />
+        <span className="rank-name">{attempt.agent_name}</span>
+        <span className="rank-model">{attempt.model_used ?? attempt.model ?? ""}</span>
+      </div>
+      <div className="rank-counters">
+        <span>
+          ev <b>{attempt.event_count}</b>
+        </span>
+        <span>
+          think <b>{attempt.thinking_count}</b>
+        </span>
+        <span>
+          tool <b>{attempt.tool_call_count}</b>
+        </span>
+      </div>
+      <div className="rank-meta">
+        {busy
+          ? `${attempt.status} · ${fmtDuration(attempt.duration_ms)}`
+          : [fmtDuration(attempt.duration_ms), cost].filter(Boolean).join(" · ")}
+      </div>
+      <div className="rank-score">
+        {busy ? "跑分中" : failed ? attempt.status : attempt.score_total ?? "—"}
+      </div>
+      <div className="expand-arrow">▾</div>
+    </div>
+  );
+}
+
+// ── page ──
 
 export function RunDetail() {
   const { runId } = useParams<{ runId: string }>();
   const [run, setRun] = useState<RunDetailModel | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<"rank" | "matrix">("rank");
+  const [openAttempt, setOpenAttempt] = useState<string | null>(null);
+  const [matrixTab, setMatrixTab] = useState<TabKey>("transcript");
   const pollRef = useRef<number | null>(null);
 
   const load = useCallback(() => {
@@ -227,26 +432,124 @@ export function RunDetail() {
   }, [load]);
 
   if (error) return <p className="error-box">{error}</p>;
-  if (!run) return <p className="muted">Loading…</p>;
+  if (!run) return <p className="muted">加载中…</p>;
+
+  // completed attempts ranked by score desc; active/failed rows keep submission order after them
+  const ranked = run.attempts
+    .filter((a) => a.status === "completed" && a.score_total !== null)
+    .sort((a, b) => (b.score_total ?? 0) - (a.score_total ?? 0));
+  const rankOf = new Map(ranked.map((a, i) => [a.id, i + 1]));
+  const leaderId = ranked[0]?.id;
+  const ordered = [...run.attempts].sort((a, b) => {
+    const ra = rankOf.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+    const rb = rankOf.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+    return ra - rb;
+  });
+
+  const completed = run.attempts.filter((a) => !isActive(a.status)).length;
+  const runningCount = run.attempts.length - completed;
+  const openedAttempt = ordered.find((a) => a.id === openAttempt);
 
   return (
     <div>
-      <div className="panel">
-        <h2>{run.id}</h2>
-        <p className="muted">
-          env={run.env_name} · status=<span className={`badge ${run.status}`}>{run.status}</span> · started={run.started_at ?? "—"}
-        </p>
-        {run.status === "running" && (
-          <button className="secondary" onClick={() => api.stopRun(run.id).then(load)}>
-            Stop
-          </button>
-        )}
+      <div className="run-header">
+        <div className="run-meta">
+          <span className="run-id">{run.id}</span>
+          <span className={`state-tag ${run.status}`}>{run.status}</span>
+          {run.status === "running" && (
+            <button className="abort-btn" onClick={() => api.stopRun(run.id).then(load)}>
+              中止评测
+            </button>
+          )}
+        </div>
+        <h1 className="run-title">
+          {run.env_name} · {run.attempts.length} 个 Agent 并发评测
+        </h1>
       </div>
 
-      <div className="compare-columns">
-        {run.attempts.map((a) => (
-          <AttemptColumn key={a.id} runId={run.id} attempt={a} />
-        ))}
+      <div className="board">
+        <div className="board-head">
+          <div className="board-head-left">
+            <span className="board-eyebrow">Leaderboard</span>
+            <span className="board-count">
+              {run.attempts.length} agents · {completed} completed
+              {runningCount > 0 && ` · ${runningCount} running`}
+            </span>
+          </div>
+          <div className="view-switch">
+            <button className={view === "rank" ? "active" : ""} onClick={() => setView("rank")}>
+              排行榜
+            </button>
+            <button className={view === "matrix" ? "active" : ""} onClick={() => setView("matrix")}>
+              矩阵视图
+            </button>
+          </div>
+        </div>
+
+        {view === "rank" && (
+          <>
+            {ordered.map((a) => (
+              <RankRow
+                key={a.id}
+                attempt={a}
+                rank={rankOf.get(a.id) ?? null}
+                leader={a.id === leaderId}
+                open={openAttempt === a.id}
+                onToggle={() => setOpenAttempt(openAttempt === a.id ? null : a.id)}
+              />
+            ))}
+            {!openedAttempt && (
+              <p className="collapsed-note">
+                点击排行榜任意一行展开完整对话记录；或切到 <b>矩阵视图</b> 同时并排查看全部{" "}
+                {run.attempts.length} 个 agent。
+              </p>
+            )}
+            {openedAttempt && (
+              <div className="floor">
+                <AttemptRack
+                  key={openedAttempt.id}
+                  runId={run.id}
+                  attempt={openedAttempt}
+                  rank={rankOf.get(openedAttempt.id) ?? null}
+                  leader={openedAttempt.id === leaderId}
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        {view === "matrix" && (
+          <>
+            <div className="matrix-toolbar">
+              <div className="sync-tabs">
+                {TABS.map((t) => (
+                  <button
+                    key={t.key}
+                    className={matrixTab === t.key ? "active" : ""}
+                    onClick={() => setMatrixTab(t.key)}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <span className="matrix-hint">
+                全部 <b>{run.attempts.length}</b> 个 agent 同步显示同一个标签页，便于逐格比对
+              </span>
+            </div>
+            <div className={`matrix${run.attempts.length > 4 ? " dense" : ""}`}>
+              {ordered.map((a) => (
+                <MatrixCell
+                  key={a.id}
+                  runId={run.id}
+                  attempt={a}
+                  rank={rankOf.get(a.id) ?? null}
+                  leader={a.id === leaderId}
+                  tab={matrixTab}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
