@@ -68,7 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await db.close()
             runtime_state.clear()
 
-    app = FastAPI(title="agent-lane", lifespan=lifespan)
+    app = FastAPI(title="agent-arena", lifespan=lifespan)
     app.state.settings = cfg
     app.state.envs = {}
 

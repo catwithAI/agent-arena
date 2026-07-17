@@ -1,6 +1,6 @@
 # Plugging in an agent
 
-agent-lane ships with two reference adapters — **Claude Code** and
+agent-arena ships with two reference adapters — **Claude Code** and
 **Codex** — and an open extension point for anything else.
 
 Both reference adapters preserve each agent's full native capability set
@@ -31,7 +31,7 @@ claude -p "<prompt>" --output-format stream-json --verbose \
   adapter never guesses a server path or name from `env_name`. Scenarios
   without a declared MCP server run with no MCP config at all.
 - To route through a third-party model provider, prefix the model with the
-  provider name configured in `agentlane.yaml`'s `model_providers` (e.g.
+  provider name configured in `arena.yaml`'s `model_providers` (e.g.
   `"openrouter/glm-5"`) — the adapter injects `ANTHROPIC_BASE_URL` /
   `ANTHROPIC_AUTH_TOKEN` into the subprocess env rather than touching your
   global `claude` settings.
@@ -71,7 +71,7 @@ needs to run in a different network/filesystem context than this backend
 (e.g. a dedicated worker host).
 
 It is disabled by default and only registers as the `"ssh-claude-code"` agent
-once `ssh_claude_code.ssh_host` is set in `agentlane.yaml` (or via
+once `ssh_claude_code.ssh_host` is set in `arena.yaml` (or via
 `LANE_SSH_CLAUDE_HOST` / `LANE_SSH_CLAUDE_USER` / `LANE_SSH_CLAUDE_PASSWORD`):
 
 ```yaml
@@ -102,7 +102,7 @@ Two ways in, from least to most control:
 ### 1. Config-only, via `CustomCliAdapter`
 
 If your agent is a CLI that takes a prompt and prints output, no Python
-required — describe it in `agentlane.yaml`:
+required — describe it in `arena.yaml`:
 
 ```yaml
 custom_agents:
@@ -149,7 +149,7 @@ retry logic, a non-CLI transport, bespoke usage accounting).
 
 ## Fairness notes
 
-"Fair comparison" in agent-lane means the same task, the same input
+"Fair comparison" in agent-arena means the same task, the same input
 materials, the same time/budget limits and the same external-resource
 boundaries — it does not mean trimming every agent down to an identical
 tool set. Claude Code, Codex, and whatever you plug in via `custom_agents`

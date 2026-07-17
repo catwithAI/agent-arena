@@ -90,7 +90,7 @@ def run_rubric_judge(
         return {
             "ok": False,
             "score_100": 0,
-            "error": "judge 未配置；请设置 agentlane.yaml 的 llm_judge 或 GDPVAL_JUDGE_*/ANTHROPIC_API_KEY 环境变量",
+            "error": "judge 未配置；请设置 arena.yaml 的 llm_judge 或 GDPVAL_JUDGE_*/ANTHROPIC_API_KEY 环境变量",
         }
     try:
         return _run(
@@ -385,7 +385,7 @@ def _repo_root() -> Path:
 
 
 def _load_yaml_config() -> dict[str, Any]:
-    path = Path(os.environ.get("LANE_CONFIG_PATH") or _repo_root() / "agentlane.yaml")
+    path = Path(os.environ.get("LANE_CONFIG_PATH") or _repo_root() / "arena.yaml")
     if not path.is_file():
         return {}
     try:

@@ -1,12 +1,12 @@
 """CustomCliAdapter — plug in any CLI-based agent without writing Python.
 
 `ClaudeCodeAdapter` and `CodexAdapter` are reference implementations, but the
-whole point of agent-lane is that you shouldn't need one of those per agent.
+whole point of agent-arena is that you shouldn't need one of those per agent.
 `CustomCliAdapter` runs any command line, feeds it a prompt (via stdin, an
 argv template, or a temp file — configurable), and parses its stdout as
 either plain text or JSONL, extracting whatever fields you point it at.
 
-Minimal example (`agentlane.yaml`):
+Minimal example (`arena.yaml`):
 
     custom_agents:
       my-agent:
@@ -20,7 +20,7 @@ Minimal example (`agentlane.yaml`):
 
 For agents that emit structured events, set `output_format: jsonl` and
 (optionally) `jsonl_fields` to map your schema's usage/thinking keys onto the
-ones agent-lane understands — see `JsonlFieldMap` below. Agents that only
+ones agent-arena understands — see `JsonlFieldMap` below. Agents that only
 print a final answer to stdout can be left as `output_format: text`; you'll
 still get pass/fail scoring, just no per-turn trace.
 """
@@ -264,7 +264,7 @@ class CustomCliAdapter:
 
     def _render_prompt(self, task: AdapterRunInput) -> str:
         parts = [
-            f"You are completing an agent-lane benchmark task. If your tools "
+            f"You are completing an agent-arena benchmark task. If your tools "
             f"support MCP, use the `lane-{task.env_name}` server to complete it.",
             "",
             "Task:",

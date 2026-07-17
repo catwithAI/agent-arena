@@ -1,4 +1,4 @@
-# agent-lane
+# agent-arena
 
 [中文文档](README-cn.md)
 
@@ -13,11 +13,18 @@ reasoning (thinking traces, where the agent exposes them), and the final
 result (score, code, artifacts) — side by side, for as many agents as you
 want to compare.
 
+This is an open project for the community, not limited to Claude Code and
+Codex — the adapter interface exists so any agent (open-source, commercial,
+or a research prototype) can be plugged in. It's also built to scale past
+one-shot comparisons: running N agents concurrently, each repeated across
+multiple trials on the same task, to get statistically meaningful results
+rather than a single noisy run.
+
 ## Quick start
 
 ```bash
 uv sync
-cp agentlane.yaml.example agentlane.yaml   # defaults work for local, single-machine use
+cp arena.yaml.example arena.yaml   # defaults work for local, single-machine use
 uv run uvicorn backend.main:create_app --factory --port 8100
 
 cd web && npm install && npm run dev
@@ -28,10 +35,10 @@ select the agents you have installed (`claude-code`/`codex` must be on
 `PATH`), and run.
 
 To route claude-code/codex through a third-party model provider (see
-`model_providers` in `agentlane.yaml.example`), make sure its API key is
+`model_providers` in `arena.yaml.example`), make sure its API key is
 available before starting the backend — either export the env var named by
 `api_key_env` (`cp .env.example .env`, fill it in, then `source .env`), or
-fill in the provider's `api_key` field directly in `agentlane.yaml` (it's
+fill in the provider's `api_key` field directly in `arena.yaml` (it's
 gitignored). If neither is set for a provider a run references, the attempt
 fails immediately with a clear `provider_api_key_missing` error instead of a
 confusing CLI login error.

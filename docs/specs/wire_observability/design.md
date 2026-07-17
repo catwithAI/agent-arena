@@ -26,13 +26,13 @@ raw events / gateway calls / HTTP hops / MCP frames
 
 关键决策：
 
-1. agent-lane 持有 canonical schema、文件、生命周期、API 和 UI；
+1. agent-arena 持有 canonical schema、文件、生命周期、API 和 UI；
 2. native event 与网络 gateway 是并列 source，不是互相替代；
 3. source 运行时写各自 spool，只有 finalizer 写 canonical `wire.jsonl`；
 4. 第一交付阶段是 Foundation + CC/Codex native normalizer；
 5. llm-gateway connector 是第二个生产 source，可拔除；
-6. MCP wrapper 和 agent-lane 反代属于 agent-lane 自有 capture；
-7. Harbor 式透明 redirect 只用于 agent-lane 能控制网络拓扑的 sandbox；
+6. MCP wrapper 和 agent-arena 反代属于 agent-arena 自有 capture；
+7. Harbor 式透明 redirect 只用于 agent-arena 能控制网络拓扑的 sandbox；
 8. 通用 HTTPS MITM 不阻塞基础层交付。
 
 ## 2. requirements 评审结果
@@ -46,7 +46,7 @@ raw events / gateway calls / HTTP hops / MCP frames
 
 1. **透明 redirect 的适用范围**：Harbor 的真实拓扑不是普通 compose sidecar，而是
    workload 设置 `network_mode: service:<sidecar>`，共享 sidecar network namespace；
-   nftables 和 `NET_ADMIN` 只在 sidecar。agent-lane 仅在能创建/修改该拓扑时启用。
+   nftables 和 `NET_ADMIN` 只在 sidecar。agent-arena 仅在能创建/修改该拓扑时启用。
 2. **CA 私钥边界**：attempt CA 私钥只存在 sidecar 文件系统；workload 只挂载公开 CA
    certificate。共享 netns 不等于共享 filesystem。
 3. **性能门槛**：R14 的 20ms 是 metadata capture 的验收目标，不适用于跨机 gateway、
@@ -442,12 +442,12 @@ finalizer 一次性读取本次可用 source 后选择 anchor，因此添加 gat
 finalize 中产生第二个 call。离线重建时读取旧 `correlation-map.json`（放在
 `wire-sources/`）优先复用已有 logical ID。
 
-`x-lane-call-id` 只适用于 agent-lane 自己逐次发起 HTTP/SDK 调用，或确实位于每次调用
+`x-lane-call-id` 只适用于 agent-arena 自己逐次发起 HTTP/SDK 调用，或确实位于每次调用
 路径上的 runtime hook。CC 的 `ANTHROPIC_CUSTOM_HEADERS`、Codex provider `http_headers`
 都是进程级静态配置，一个 attempt 内所有请求会复用，**不得**作为 logical call anchor。
 这两类 adapter 只静态注入 `x-lane-attempt-id`/`x-eval-session-id`。
 
-agent-lane 反向代理为每个入站请求生成 `proxy_request_id`，并从响应 header/body 提取
+agent-arena 反向代理为每个入站请求生成 `proxy_request_id`，并从响应 header/body 提取
 provider `request-id`、OpenAI response ID、Anthropic message ID 等 producer anchor。若这些
 ID 没有出现在 native event 中，它们仍只提供 transport/source-local 的稳定性，跨 source
 关联继续走 §7.3，不将 attempt-level header 当作 call-level 证据。
@@ -762,7 +762,7 @@ phase 不能由 finalizer 事后按时间猜。归属机制固定如下：
 |---|---|
 | native-event、gateway connector | adapter 注入路径专用于 `agent_run`，启动参数/header 写死该 phase；verification 使用另一 capture context |
 | MCP tap | rewrite 参数显式加入 `--attempt-id ... --phase agent_run` |
-| agent-lane HTTP proxy | 每个 listener 绑定 attempt；进程内 observer registry 在请求到达时快照当前 phase |
+| agent-arena HTTP proxy | 每个 listener 绑定 attempt；进程内 observer registry 在请求到达时快照当前 phase |
 | 独立 proxy/sidecar | `WireInjection` 提供只读 phase-state 文件或 control socket；observer phase 切换先更新它，再启动该 phase 工作 |
 
 phase-state 文件采用 atomic rename，内容含 `attempt_id`、`phase`、monotonic sequence 和
@@ -800,7 +800,7 @@ conflict，不静默修正。
 2. 当前 `codex exec --json` stdout events；
 3. attempt aggregate usage（最低精度）。
 
-Harbor 依赖 internal `token_count.last_token_usage` 识别一次 API call。agent-lane 先做 spike：
+Harbor 依赖 internal `token_count.last_token_usage` 识别一次 API call。agent-arena 先做 spike：
 
 ```text
 CODEX_HOME=<attempt_dir>/.codex-runtime
@@ -946,7 +946,7 @@ domain，不能生成 `lane-semantic-jcs-nfc-v1`。
 
 llm-gateway 当前若只返回其 raw JSON hash，connector 标记
 `llm-gateway-raw-json-v1`，只在 gateway source 内比较；只有 API 返回足够的脱敏结构、使
-agent-lane 能重建 semantic IR 时，connector 才重算 canonical semantic hash。§10.4 的
+agent-arena 能重建 semantic IR 时，connector 才重算 canonical semantic hash。§10.4 的
 跨 source message diff 和 tool-result `full/truncated/summarized` 判定只接受相同 canonical
 domain；domain 不同则降级 size/usage 启发式并明确降低 confidence。
 
@@ -976,7 +976,7 @@ Phase 1 的 native normalizer 同时原子生成 `trajectory.json`，避免
 `step_id = ts_<uuid5(attempt_id, agent_id, producer_event_ref)>`。Claude/Codex 原生事件能证明
 邻接时生产 step；只有 HTTP/gateway evidence 时不伪造 step。wire envelope 的
 `trajectory_step_id` 只能引用该文件中存在的 ID，finalizer 做 referential-integrity check。
-这只是 agent-lane 最小索引，不宣称已采用 ATIF；ATIF 是可选 export mapping。
+这只是 agent-arena 最小索引，不宣称已采用 ATIF；ATIF 是可选 export mapping。
 
 ## 11. llm-gateway connector
 
@@ -1011,7 +1011,7 @@ GET /api/v1/observe/sessions/{session_id}/compactions?cursor=&limit=200
   retry、translation、error；
 - prompt/response preview 默认不返回，显式 `include_payload` 也受服务端 policy 限制。
 
-agent-lane connector 不读取 SQLite，不依赖 gateway Web UI。
+agent-arena connector 不读取 SQLite，不依赖 gateway Web UI。
 
 ### 11.2 身份注入
 
@@ -1040,7 +1040,7 @@ merge_custom_headers(static: str | None, attempt_headers: dict[str, str]) -> str
 - 静态其他 header 原样保留；
 - 输出使用换行分隔的 `Header: value`。
 
-Codex 在 Responses gateway 可用前不接该 source。以后优先通过 agent-lane internal reverse
+Codex 在 Responses gateway 可用前不接该 source。以后优先通过 agent-arena internal reverse
 proxy 注入 correlation，避免依赖 Codex 私有 custom-header 配置。
 
 ### 11.3 拉取与失败
@@ -1073,7 +1073,7 @@ uv run --project <repo> python -m backend.wire.mcp_tap \
   -- uv run --project <repo> python <env>/mcp_server.py
 ```
 
-Codex 的 `mcp_servers.*.command/args` 做同样重写。wrapper 只包 agent-lane 注入的 MCP
+Codex 的 `mcp_servers.*.command/args` 做同样重写。wrapper 只包 agent-arena 注入的 MCP
 server，不扫描或修改用户全局 MCP 配置。
 
 ### 12.2 双向 pump
@@ -1099,7 +1099,7 @@ child stderr ──────────────────> parent stde
 
 MCP SDK 若未来改 framing，wrapper capability probe 失败后退化为 byte metadata，不破坏通信。
 
-## 13. agent-lane HTTP reverse capture
+## 13. agent-arena HTTP reverse capture
 
 ### 13.1 路由形态
 
@@ -1143,7 +1143,7 @@ record capability 退化 metadata。
 
 ### 13.3 HTTPS 与外部 URL
 
-客户端到 agent-lane internal proxy 可以先用同机 HTTP；proxy 到 provider 使用 HTTPS。这样已经
+客户端到 agent-arena internal proxy 可以先用同机 HTTP；proxy 到 provider 使用 HTTPS。这样已经
 能看到明文 LLM payload，不需要 MITM。只有 base URL 不可改的进程才进入 R8.1/MITM。
 
 ## 14. Sandbox transparent redirect
@@ -1229,7 +1229,7 @@ class ModelProviderSection(BaseModel):
 
 默认：
 
-- `anthropic-messages` → `bearer`（保持 agent-lane 当前行为）；
+- `anthropic-messages` → `bearer`（保持 agent-arena 当前行为）；
 - OpenAI protocols → `bearer`。
 
 Claude 注入：
@@ -1423,7 +1423,7 @@ cursor 是 base64url 编码的：
 - 先验证 attempt 属于 URL 中 run；
 - blob ref regex 白名单，不 join 任意 path；
 - metadata policy 下 blob endpoint 返回 404；
-- parsed/full 仍经过应用现有 auth；若当前 agent-lane 没有用户级 auth，生产配置默认禁用 blob
+- parsed/full 仍经过应用现有 auth；若当前 agent-arena 没有用户级 auth，生产配置默认禁用 blob
   API，直到权限模型明确；
 - wire/source spool 不进入普通 artifact API；
 - parse error 返回 scrub 后文本。
@@ -1557,7 +1557,7 @@ connector 后历史/新 native view 正常。
 
 验收：包装前后任务结果一致；timeout/cancel 无孤儿；至少一个 tool result size 可见。
 
-### Phase 4：agent-lane reverse HTTP capture
+### Phase 4：agent-arena reverse HTTP capture
 
 范围：
 
@@ -1676,7 +1676,7 @@ tests/test_model_provider_protocol_migration.py
 - 增加 versioned calls/compactions query API；
 - API 输出遵守其自身 redaction policy；
 - 保持 `x-eval-*` 不转发上游；
-- 可选增加 `x-lane-*` alias，但不是 agent-lane connector 前置。
+- 可选增加 `x-lane-*` alias，但不是 agent-arena connector 前置。
 
 这些外部改动只影响对应 source coverage，不影响 Foundation/native/MCP 的运行。
 
@@ -1685,7 +1685,7 @@ tests/test_model_provider_protocol_migration.py
 以下在对应 spike 后决定，不阻塞 Phase 0/1：
 
 - `lane-trajectory-v1` 到 ATIF 的 export mapping 及稳定版本；
-- transparent metadata sidecar 最终使用 GOST 还是 agent-lane 自有二进制；
+- transparent metadata sidecar 最终使用 GOST 还是 agent-arena 自有二进制；
 - MITM 使用 mitmproxy addon 还是独立实现；
 - full blob 使用 gzip 还是 zstd；
 - ~~Codex 是否能在 `--ephemeral` 下保留 internal session events~~
@@ -1700,7 +1700,7 @@ codex_equiv.sh；真实 auth/session 内容不入库）。
 对照实验（隔离 `CODEX_HOME`，同一 prompt，ephemeral vs 非 ephemeral，均带真实
 auth+config）：
 
-| 维度 | `--ephemeral`（agent-lane 现状） | 非 ephemeral |
+| 维度 | `--ephemeral`（agent-arena 现状） | 非 ephemeral |
 |---|---|---|
 | session rollout JSONL | **不生成**（`sessions/` 目录不存在） | 生成 `sessions/YYYY/MM/DD/rollout-*.jsonl` |
 | 可见结果（agent_message 文本） | 一致 | 一致 |
@@ -1730,7 +1730,7 @@ auth+config）：
   session evidence」的对照路径（已验证可行、行为等价）；② stdout events（当前，
   aggregate-only）；③ attempt aggregate usage（最低）。首期落 ②，把 ① 作为
   可选增强留给需要逐调用 Codex 曲线的 benchmark。
-- 逐调用切分不是 Codex 的默认能力，agent-lane 不为它牺牲 ephemeral 隔离性；诚实
+- 逐调用切分不是 Codex 的默认能力，agent-arena 不为它牺牲 ephemeral 隔离性；诚实
   aggregate-only 优于伪造曲线（对齐 roadmap「诚实 aggregate-only」原则）。
 
 ## 28. 完成定义
@@ -1740,7 +1740,7 @@ auth+config）：
 1. canonical schema、spool、finalizer、manifest、API 可用；
 2. CC/Codex native evidence 进入调用级 `llm_call`，无法逐调用时明确 aggregate-only；
 3. MCP stdio 能记录 tool request/result size；
-4. 至少一种 transport source（llm-gateway connector 或 agent-lane reverse proxy）与 native
+4. 至少一种 transport source（llm-gateway connector 或 agent-arena reverse proxy）与 native
    call 成功关联；
 5. RunDetail 能显示调用级 token 曲线和 capture coverage；
 6. capture 默认 fail-open、metadata，无 secret 落盘；

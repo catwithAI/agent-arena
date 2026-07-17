@@ -134,7 +134,7 @@ class ClaudeCodeAdapter:
                     error_message=(
                         f"provider {model_ref.provider!r} is missing an API key: "
                         f"env var {provider.api_key_env} is not set, and "
-                        f"agentlane.yaml model_providers.{model_ref.provider}.api_key "
+                        f"arena.yaml model_providers.{model_ref.provider}.api_key "
                         "is also empty"
                     ),
                 )

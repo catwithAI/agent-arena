@@ -10,7 +10,7 @@ prerequisites:
   level: judge                     # none | skill-source | office | compiler | media | judge
   summary: "需要可访问的 Anthropic API 检查 Agent Excel、源材料和专家工作簿；参考文件均随 env 提供。"
   requires:
-    - "ANTHROPIC_API_KEY 环境变量（或 agentlane.yaml 配置的等效 judge key）"
+    - "ANTHROPIC_API_KEY 环境变量（或 arena.yaml 配置的等效 judge key）"
     - "llm_judge.model，默认使用 Anthropic 的当前 Claude 模型"
     - "Judge 侧的 Excel 工作簿读取能力（建议 Python openpyxl）"
   on_missing: "Judge 未配置或无法读取工作簿 → official_rubric_judge=0。"

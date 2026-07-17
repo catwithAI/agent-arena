@@ -3,7 +3,7 @@
 输入：attempt 的 ``events.jsonl``（``codex exec --json`` stdout 逐行）。
 输出：``aggregate_usage`` WireEvidence + ``trajectory.json``。
 
-W1-2 spike 决议（§27.1）：agent-lane 现状用 ``--ephemeral``，不落 internal
+W1-2 spike 决议（§27.1）：agent-arena 现状用 ``--ephemeral``，不落 internal
 session rollout，逐调用 ``token_count.last_token_usage`` 不可得；stdout 每次
 exec 只有 1 个 ``turn.completed``（整 turn 累计 usage），逐次 agent_message 无
 per-call usage。因此**首期只产 attempt 级 aggregate，不伪造逐调用曲线**——

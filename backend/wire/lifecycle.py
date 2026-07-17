@@ -122,7 +122,7 @@ class CapturePreparationError(RuntimeError):
     """strict 模式下改写型 source 无法 ready；agent 尚未启动。"""
 
 
-# process_env 静态保留名：agent-lane 自身通道 + Anthropic 认证 + base URL 专用通道。
+# process_env 静态保留名：agent-arena 自身通道 + Anthropic 认证 + base URL 专用通道。
 # provider 的 api_key_env 是任意名称（如 UP_KEY），必须由调用方把 resolved
 # provider 配置里的全部 credential env 名作为 protected_env_keys 传入——
 # 否则 source 可以用 process_env 覆盖真实 credential。

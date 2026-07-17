@@ -1,4 +1,4 @@
-"""agent-lane reverse HTTP capture proxy source（design §13，W4-1/2/3）。
+"""agent-arena reverse HTTP capture proxy source（design §13，W4-1/2/3）。
 
 adapter 把 provider base URL 注入为
 ``http://127.0.0.1:8100/internal/wire-proxy/<attempt>/<provider>``，客户端
@@ -107,7 +107,7 @@ _INBOUND_STRIP_HEADERS = frozenset({
     # capture token 与内部 correlation 头绝不能泄漏给第三方 upstream（评审 P0）。
     "x-lane-capture-token",
 })
-# 内部 header 前缀：任何以此开头的 header 都是 agent-lane/eval 内部 correlation，
+# 内部 header 前缀：任何以此开头的 header 都是 agent-arena/eval 内部 correlation，
 # 不转发给第三方 provider（防泄漏内部 attempt/session ID，评审 P0）。allowlist
 # 式前缀剥离，杜绝将来新增 x-lane-* / x-eval-* 头忘记加进上面集合的漏网。
 _INBOUND_STRIP_PREFIXES = ("x-lane-", "x-eval-")

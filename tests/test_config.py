@@ -21,7 +21,7 @@ def test_env_override(monkeypatch, tmp_path):
 
 def test_model_providers_never_leak_api_key(monkeypatch, tmp_path, caplog):
     monkeypatch.setenv("MY_PROVIDER_KEY", "sk-should-not-appear-in-logs")
-    config_path = tmp_path / "agentlane.yaml"
+    config_path = tmp_path / "arena.yaml"
     config_path.write_text(
         "model_providers:\n"
         "  myprov:\n"

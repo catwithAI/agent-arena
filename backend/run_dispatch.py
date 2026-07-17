@@ -59,7 +59,7 @@ def _build_wire_sources(
     """Assemble the wire capture sources for this attempt:
     - HttpProxySource: claude-code/codex on a named third-party provider.
     - McpStdioSource: claude-code/codex, one per MCP server the scenario
-      actually declared. No declaration means no source — agent-lane never
+      actually declared. No declaration means no source — agent-arena never
       injects an MCP server on its own.
     """
     sources: list[Any] = []

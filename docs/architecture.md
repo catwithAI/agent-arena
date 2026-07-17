@@ -3,7 +3,7 @@
 ## Layout
 
 ```
-agent-lane/
+agent-arena/
 ├── backend/            # FastAPI app: dispatch, execution, evaluation
 │   ├── adapters/         # per-agent execution adapters
 │   └── *.py              # main/api/config/db/models/runner/evaluator/...
@@ -11,7 +11,7 @@ agent-lane/
 ├── envs/                # evaluation environments (task defs + tools + scorer)
 ├── web/                 # React + Vite + TS frontend
 ├── data/                # runtime data (gitignored): sqlite + attempt files
-├── agentlane.yaml(.example)
+├── arena.yaml(.example)
 └── pyproject.toml
 ```
 
@@ -69,7 +69,7 @@ restriction — see "Capability fairness" below.
 
 ## Capability fairness
 
-agent-lane compares each agent's **full native capability set**. "Fair"
+agent-arena compares each agent's **full native capability set**. "Fair"
 means the same task, input materials, time budget, and external-resource
 boundaries — not the same tool set. Faced with the same task, Claude Code
 might reach for WebSearch, Codex might reach for shell/Python, and a
@@ -89,7 +89,7 @@ that difference is itself part of the result, not noise to eliminate.
 ## Extension points
 
 - **New agent**: implement `AgentAdapter` (one Python file), or for
-  CLI-based agents, describe it in `agentlane.yaml` under `custom_agents` —
+  CLI-based agents, describe it in `arena.yaml` under `custom_agents` —
   see [agents.md](agents.md).
 - **New environment**: add a directory under `envs/` — see
   [environments.md](environments.md).

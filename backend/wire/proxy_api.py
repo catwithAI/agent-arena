@@ -1,4 +1,4 @@
-"""agent-lane reverse HTTP capture proxy 路由（design §13.1，W4-1）。
+"""agent-arena reverse HTTP capture proxy 路由（design §13.1，W4-1）。
 
     POST /internal/wire-proxy/{attempt_id}/{provider}/{path:path}
     （GET/PUT/... 同形，method 透传）
