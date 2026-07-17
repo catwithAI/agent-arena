@@ -8,7 +8,7 @@ import { api, type WireManifest, type WireRecord, type WireTrajectory } from "..
 import { curveSegments, deriveWireView, usageValue, type WireGap } from "./curve";
 
 function fmtNum(n: number | null | undefined): string {
-  return typeof n === "number" ? n.toLocaleString("en-US") : "未知";
+  return typeof n === "number" ? n.toLocaleString("zh-CN") : "未知";
 }
 
 function gapText(g: WireGap): string {

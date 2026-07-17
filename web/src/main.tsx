@@ -12,13 +12,18 @@ function App() {
   return (
     <BrowserRouter>
       <header>
-        <h1>agent-lane</h1>
+        <div className="brand">
+          <span className="brand-glyph">▣</span>
+          <span className="brand-mark">
+            agent<span className="dim">-</span>arena
+          </span>
+        </div>
         <nav>
           <NavLink to="/" end>
-            New run
+            新建评测
           </NavLink>
-          <NavLink to="/runs">History</NavLink>
-          <NavLink to="/scenarios">Scenarios &amp; scoring</NavLink>
+          <NavLink to="/runs">历史记录</NavLink>
+          <NavLink to="/scenarios">场景与评分</NavLink>
         </nav>
       </header>
       <main>

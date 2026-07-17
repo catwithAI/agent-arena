@@ -11,34 +11,56 @@ export function Scenarios() {
 
   return (
     <div>
-      {envs.map((env) => (
-        <div className="panel" key={env.name}>
-          <h2>{env.name}</h2>
-          <p className="muted">
-            {env.category} · pass_threshold={env.pass_threshold} · {env.tool_count} tools · {env.task_count} tasks
-          </p>
-          <p>{env.description}</p>
-          <p>
-            <strong>What this tests:</strong> {env.test_focus}
-          </p>
-          <table>
-            <thead>
-              <tr>
-                <th>Dimension</th>
-                <th>Weight</th>
-                <th>Description</th>
-              </tr>
-            </thead>
-            <tbody>
-              {env.dimensions.map((d) => (
-                <tr key={d.name}>
-                  <td>{d.name}</td>
-                  <td>{d.weight}</td>
-                  <td>{d.description}</td>
+      <div className="readout">
+        <span>
+          ENVS <b>{envs.length}</b>
+        </span>
+      </div>
+
+      <h1>场景与评分</h1>
+      <p className="lede">每个评测环境的考察内容、可用工具与评分维度权重。</p>
+
+      {envs.map((env, i) => (
+        <div className="channel" key={env.name}>
+          <div className="channel-head">
+            <span className="channel-tag">ENV.{String(i + 1).padStart(2, "0")}</span>
+            <span className="channel-title">
+              {env.name} <span className="soft">/ {env.category}</span>
+            </span>
+          </div>
+          <div className="channel-body">
+            <div className="readout" style={{ marginBottom: "0.8rem" }}>
+              <span>
+                及格线 <b>{env.pass_threshold ?? "—"}</b>
+              </span>
+              <span>
+                工具 <b>{env.tool_count}</b>
+              </span>
+              <span>
+                任务 <b>{env.task_count}</b>
+              </span>
+            </div>
+            <p style={{ marginTop: 0 }}>{env.description}</p>
+            <div className="env-desc">考察内容：{env.test_focus}</div>
+            <table style={{ marginTop: "1rem" }}>
+              <thead>
+                <tr>
+                  <th>评分维度</th>
+                  <th>权重</th>
+                  <th>说明</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {env.dimensions.map((d) => (
+                  <tr key={d.name}>
+                    <td>{d.name}</td>
+                    <td>{d.weight}</td>
+                    <td>{d.description}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ))}
     </div>

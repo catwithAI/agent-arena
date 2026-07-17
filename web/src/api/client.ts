@@ -62,6 +62,18 @@ export type ModelProvidersConfig = {
   suggested: string[];
 };
 
+export type OpenRouterModel = {
+  id: string;
+  name: string;
+  context_length: number | null;
+};
+
+export type OpenRouterModelsConfig = {
+  models: OpenRouterModel[];
+  error: string | null;
+  stale?: boolean;
+};
+
 export type RunRow = {
   run_id: string;
   task_id: string;
@@ -238,6 +250,7 @@ export const api = {
   envs: () => req<EnvSummary[]>("GET", "/api/envs"),
   envTasks: (name: string) => req<TaskJson[]>("GET", `/api/envs/${name}/tasks`),
   modelProviders: () => req<ModelProvidersConfig>("GET", "/api/models/providers"),
+  openrouterModels: () => req<OpenRouterModelsConfig>("GET", "/api/openrouter/models"),
   createRun: (body: {
     env_name: string;
     task_id?: string;
