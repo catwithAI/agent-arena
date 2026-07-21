@@ -38,6 +38,17 @@ export type EnvSummary = {
   dimensions: EnvDimension[];
   tool_count: number;
   task_count: number;
+  // Any task carries a non-empty `_conversation` list -> multi-turn scenario.
+  multi_turn?: boolean;
+  // false when the env's core failed to import at startup (load_error says why).
+  available?: boolean;
+  load_error?: string | null;
+  // Warn-only local dependency check results ("this run will lose points").
+  prerequisite_warnings?: string[];
+  // Input modalities the agent-side model must support (meta.yaml
+  // prerequisites.agent_modalities); cross-checked against the selected
+  // model's input_modalities.
+  agent_modalities?: string[];
 };
 
 export type TaskJson = {
@@ -66,6 +77,8 @@ export type OpenRouterModel = {
   id: string;
   name: string;
   context_length: number | null;
+  input_modalities?: string[];
+  output_modalities?: string[];
 };
 
 export type OpenRouterModelsConfig = {
@@ -74,11 +87,15 @@ export type OpenRouterModelsConfig = {
   stale?: boolean;
 };
 
+export type CompareMode = "multi-agent" | "same-model" | "multi-model";
+
 export type RunRow = {
   run_id: string;
   task_id: string;
   env_name: string;
   run_status: string;
+  compare_mode?: CompareMode;
+  execution?: "serial" | "parallel" | null;
   created_at: string;
   attempt_count: number;
 };
@@ -108,6 +125,8 @@ export type RunDetail = {
   task_id: string;
   env_name: string;
   status: string;
+  compare_mode?: CompareMode;
+  execution?: "serial" | "parallel" | null;
   created_at: string;
   started_at: string | null;
   ended_at: string | null;
@@ -303,9 +322,16 @@ export const api = {
     env_name: string;
     task_id?: string;
     prompt?: string;
+    context?: Record<string, unknown>;
     agents: string[];
+    // multi-agent (default) | same-model | multi-model
+    compare_mode?: CompareMode;
     model?: string;
-    models?: Record<string, string>;
+    // same-model: {agent: model} map; multi-model: a list of model ids for
+    // the single selected agent.
+    models?: Record<string, string> | string[];
+    execution?: "serial" | "parallel";
+    capture_policy?: "off" | "metadata" | "parsed" | "full";
     // Omitted -> backend keeps its existing default. Explicit `null` ->
     // unlimited: no time-budget notice is injected, no deadline enforced.
     timeout_seconds?: number | null;

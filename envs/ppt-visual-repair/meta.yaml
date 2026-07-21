@@ -1,3 +1,4 @@
+schema_version: "1.0"
 name: ppt-visual-repair
 type: skill
 category: document-design-taste

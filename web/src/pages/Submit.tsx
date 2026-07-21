@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api, type AgentInfo, type EnvSummary, type OpenRouterModel, type TaskJson } from "../api/client";
+import { ModalityBadges, ModalityChip, modalityOptionMark } from "../components/ModalityChips";
 
 export function Submit() {
   const navigate = useNavigate();
@@ -114,11 +115,30 @@ export function Submit() {
           <select id="env" value={envName} onChange={(e) => setEnvName(e.target.value)}>
             {envs.map((e) => (
               <option key={e.name} value={e.name}>
-                {e.name} — {e.category}
+                {((e.prerequisite_warnings?.length ?? 0) > 0 ? `⚠ ${e.name}` : e.name)
+                  + modalityOptionMark(e.agent_modalities)}
+                {" — "}
+                {e.category}
               </option>
             ))}
           </select>
           {currentEnv && <div className="env-desc">{currentEnv.description}</div>}
+          {(currentEnv?.agent_modalities?.length ?? 0) > 0 && (
+            <div className="seg-row" style={{ marginTop: "0.4rem" }}>
+              <span className="seg-label">场景需求</span>
+              {currentEnv!.agent_modalities!.map((m) => (
+                <ModalityChip key={m} modality={m} />
+              ))}
+              <span>输入能力</span>
+            </div>
+          )}
+          {(currentEnv?.prerequisite_warnings?.length ?? 0) > 0 && (
+            <div className="prereq-warn" role="alert">
+              {currentEnv!.prerequisite_warnings!.map((w) => (
+                <div key={w}>⚠ 本机依赖缺失：{w}</div>
+              ))}
+            </div>
+          )}
 
           <label htmlFor="task">任务</label>
           <select id="task" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
@@ -211,6 +231,7 @@ export function Submit() {
                       }}
                     >
                       <span>{m.id}</span>
+                      <ModalityBadges input={m.input_modalities} output={m.output_modalities} />
                       <span className="ctx">{fmtCtx(m.context_length)}</span>
                     </div>
                   ))}

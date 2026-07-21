@@ -20,6 +20,21 @@ from .runtime_state import RuntimeState
 logger = logging.getLogger(__name__)
 
 
+def _env_is_multi_turn(env: object) -> bool:
+    """Whether an env is a multi-turn conversation scenario: any task whose
+    context carries a non-empty `_conversation` list. Decided by data, not by
+    naming conventions; the frontend uses this to adjust submit options.
+    """
+    from .conversation.plan import CONVERSATION_CONTEXT_KEY
+
+    for task in getattr(env, "tasks", []) or []:
+        ctx = getattr(task, "context", None) or {}
+        conv = ctx.get(CONVERSATION_CONTEXT_KEY) if isinstance(ctx, dict) else None
+        if isinstance(conv, list) and conv:
+            return True
+    return False
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """uvicorn factory entry point.
 
@@ -32,7 +47,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         data_path = cfg.lane.data_path
         db = await open_db(data_path)
         db_path = data_path / "lane.db"
-        envs = load_all_envs(cfg.lane.envs_path)
+        # allow_unavailable_core: an env whose core.py fails to import still
+        # shows up in the list as unavailable instead of blocking startup.
+        envs = load_all_envs(cfg.lane.envs_path, allow_unavailable_core=True)
         logger.info("loaded envs: %s", list(envs))
 
         app.state.settings = cfg
@@ -91,6 +108,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "dimensions": env.meta.get("dimensions", []),
                 "tool_count": len(env.tools),
                 "task_count": len(env.tasks),
+                "multi_turn": _env_is_multi_turn(env),
+                "available": env.load_error is None,
+                "load_error": str(env.load_error) if env.load_error else None,
+                # Warn-only local dependency check results; the frontend
+                # surfaces them on the env card so the "this run will lose
+                # points" pain lands before submit, not after.
+                "prerequisite_warnings": env.prerequisite_warnings,
+                # Input modalities the agent-side model must support
+                # (meta.yaml prerequisites.agent_modalities, machine-readable);
+                # the frontend cross-checks them against the selected model's
+                # input_modalities.
+                "agent_modalities": (
+                    (env.meta.get("prerequisites") or {}).get("agent_modalities", [])
+                    if isinstance(env.meta.get("prerequisites"), dict) else []
+                ),
             }
             for env in app.state.envs.values()
         ]
@@ -108,6 +140,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(env_attempt_router)
     # Frontend-facing API mounts under /api.
     register_frontend_routes(app, prefix="/api")
+
+    # Self-check endpoint (backend/selfcheck.py): GET /api/selfcheck.
+    from .selfcheck import register_routes as register_selfcheck_routes
+
+    register_selfcheck_routes(app, prefix="/api")
 
     # Wire observability read API (backend/wire/api.py): trace/manifest/
     # trajectory/blob endpoints for the run detail view, mounted under /api

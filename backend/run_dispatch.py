@@ -160,6 +160,9 @@ async def dispatch(
     env_name: str,
     session_token: str,
     model: str | None = None,
+    # Requested wire capture level for this attempt (off|metadata|parsed|full);
+    # intersected with the server maximum below, never exceeding it.
+    capture_policy: str | None = None,
 ) -> None:
     state = runtime_state.get()
     _mark_running(state.db_path, attempt_id)
@@ -287,7 +290,7 @@ async def dispatch(
     )
     effective_policy = resolve_effective_policy(
         server_max=settings.lane.wire_capture_max_policy,
-        run_requested=None,
+        run_requested=capture_policy,
     )
     capture = WireCaptureSession(
         attempt_id=attempt_id,
