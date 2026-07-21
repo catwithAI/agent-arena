@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import { api, type ArtifactStep, type AttemptDetail, type AttemptSummary, type RunDetail as RunDetailModel } from "../api/client";
 import { WirePanel } from "../wire/WirePanel";
 import { ArtifactsPanel } from "../artifacts/ArtifactsPanel";
+import { ConversationPanel } from "./ConversationPanel";
 
 // 供测试直接从 pages/RunDetail 引入（WirePanel.test.tsx / ArtifactsPanel.test.tsx
 // mock ../api/client 后 import { WirePanel } from "../pages/RunDetail"）：
@@ -138,10 +139,11 @@ function Transcript({ events }: { events: Array<Record<string, unknown>> }) {
 
 // ── shared attempt helpers ──
 
-type TabKey = "transcript" | "scores" | "artifacts" | "wire";
+type TabKey = "transcript" | "turns" | "scores" | "artifacts" | "wire";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "transcript", label: "对话记录" },
+  { key: "turns", label: "对话轮次" },
   { key: "scores", label: "评分" },
   { key: "artifacts", label: "产物" },
   { key: "wire", label: "通信详情" },
@@ -209,6 +211,10 @@ function AttemptTabBody({
     if (detail.events.length === 0 && isActive(attempt.status))
       return <div className="mx-empty">刚启动，等待第一次事件…</div>;
     return <Transcript events={detail.events} />;
+  }
+  if (tab === "turns") {
+    if (!detail) return <p className="muted">加载中…</p>;
+    return <ConversationPanel conversation={detail.conversation} />;
   }
   if (tab === "scores") {
     if (!detail) return <p className="muted">加载中…</p>;

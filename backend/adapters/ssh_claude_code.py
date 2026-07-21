@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import (
+    AdapterCapabilities,
     AdapterResult,
     AdapterRunInput,
     build_security_meta,
@@ -46,6 +47,15 @@ REMOTE_BASE_DIR = "/tmp/lane-attempts"
 
 
 class SshClaudeCodeAdapter:
+    # Static capability declaration: runs Claude Code on a remote host over
+    # SSH; `claude -p` there has no mid-run interaction-answer channel.
+    capabilities = AdapterCapabilities(
+        execution_locus="remote-host",
+        network_required="public_internet",
+        system_requires=("ssh",),
+        interaction_answer=False,
+    )
+
     @property
     def wire_capture_capabilities(self) -> dict[str, Any]:
         """The remote CLI has no local channel this adapter can inject

@@ -212,6 +212,59 @@ async def dispatch(
         _refresh_run_status(state.db_path, attempt_id)
         return
 
+    # Multi-turn conversation: the `_conversation` array in task_context is
+    # parsed before the agent starts, with a capability gate — a plan that
+    # contains answer_interaction turns while the adapter has no mid-run
+    # answer channel fails fast; it is never silently skipped or launched
+    # with a plan the adapter can't execute. The API entry does the same
+    # validation; this is defense in depth (file tasks / recovery paths
+    # don't go through the API validation).
+    from .conversation.plan import (
+        ConversationPlanError,
+        conversation_turns_from_context,
+    )
+    try:
+        conversation_turns = conversation_turns_from_context(
+            task_id=task_id, task_context=task_context,
+        )
+    except ConversationPlanError as exc:
+        from .runner import _finalize_no_score
+
+        logger.error("dispatch: invalid conversation task=%s: %s", task_id, exc)
+        _finalize_no_score(
+            db_path=state.db_path,
+            attempt_id=attempt_id,
+            status="cli_error",
+            error_code="invalid_conversation",
+            error_message=str(exc),
+            pass_threshold=int(env.meta.get("pass_threshold", 60)),
+        )
+        _refresh_run_status(state.db_path, attempt_id)
+        return
+    if any(t.action == "answer_interaction" for t in conversation_turns) and not getattr(
+        getattr(adapter, "capabilities", None), "interaction_answer", False
+    ):
+        from .runner import _finalize_no_score
+
+        logger.error(
+            "dispatch: agent %s cannot answer mid-run interactions; rejecting a "
+            "conversation with answer_interaction turns attempt=%s",
+            agent_name, attempt_id,
+        )
+        _finalize_no_score(
+            db_path=state.db_path,
+            attempt_id=attempt_id,
+            status="cli_error",
+            error_code="interaction_answer_unsupported",
+            error_message=(
+                f"agent {agent_name} has no mid-run interaction-answer channel "
+                "and cannot execute a conversation with answer_interaction turns"
+            ),
+            pass_threshold=int(env.meta.get("pass_threshold", 60)),
+        )
+        _refresh_run_status(state.db_path, attempt_id)
+        return
+
     # Wire capture: prepare always runs before adapter.run(). With no source
     # wired up (unknown agent, no named third-party provider) this is a
     # no-op that returns a zero injection, so behavior is identical to
@@ -274,6 +327,7 @@ async def dispatch(
         env_base_url=settings.lane.public_base_url,
         mcp_servers=mcp_servers,
         wire_injection=injection,
+        conversation_turns=conversation_turns,
     )
     try:
         bound = _BoundAdapter(adapter=adapter, task=task, env=env, data_path=state.data_path)

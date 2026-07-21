@@ -38,7 +38,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from .base import AdapterResult, AdapterRunInput, build_security_meta, prompt_context
+from .base import (
+    AdapterCapabilities,
+    AdapterResult,
+    AdapterRunInput,
+    build_security_meta,
+    prompt_context,
+)
 from .token_usage import usage_input_tokens, usage_output_tokens
 
 logger = logging.getLogger(__name__)
@@ -71,6 +77,15 @@ class CustomCliConfig(BaseModel):
 class CustomCliAdapter:
     """Generic adapter driven entirely by `CustomCliConfig` — no subclassing
     needed to onboard a new agent."""
+
+    # Static capability declaration. A config-driven one-shot CLI has no
+    # mid-run interaction-answer channel, so conversations containing
+    # answer_interaction turns are rejected by dispatch before launch.
+    capabilities = AdapterCapabilities(
+        execution_locus="host",
+        network_required="public_internet",
+        interaction_answer=False,
+    )
 
     def __init__(self, config: CustomCliConfig, *, project_path: str | Path = ".") -> None:
         self.config = config

@@ -288,6 +288,51 @@ def _read_final_state(path: Path) -> dict[str, Any]:
         return {}
 
 
+def _read_wire_manifest(attempt_dir: Path) -> dict[str, Any] | None:
+    """Read wire-manifest.json (missing/corrupt returns None)."""
+    path = attempt_dir / "wire-manifest.json"
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _read_wire_records(attempt_dir: Path) -> list[dict[str, Any]]:
+    """Read canonical wire.jsonl (missing/truncated fail-open)."""
+    return _read_jsonl(attempt_dir / "wire.jsonl")
+
+
+def _build_conversation_block(attempt_dir: Path) -> dict[str, Any]:
+    """The attempt's conversation block: summary + turns + evaluation.
+
+    - **summary**: `summarize_conversation` (historical attempts without a
+      conversation.jsonl get a legacy single-turn summary);
+    - **turns**: per-turn detail, never the prompt text itself (bytes/hash
+      only);
+    - **evaluation**: the compaction-evaluation summary, mapped from the
+      wire manifest + canonical records (with wire data missing the status
+      is `incomplete`, never faked).
+    """
+    from .conversation.summary import conversation_turns, summarize_conversation
+    from .wire.evaluation import evaluate_compaction, inputs_from_wire
+
+    summary = summarize_conversation(attempt_dir)
+    turns = conversation_turns(attempt_dir)
+
+    manifest = _read_wire_manifest(attempt_dir)
+    records = _read_wire_records(attempt_dir)
+    eval_inputs = inputs_from_wire(
+        manifest=manifest,
+        records=records,
+        session_continuity=summary.get("session_continuity"),
+    )
+    evaluation = evaluate_compaction(eval_inputs)
+
+    return {"summary": summary, "turns": turns, "evaluation": evaluation}
+
+
 # Note: the agent artifact root is now uniquely attempt_dir/skill_workspace
 # (see `_artifacts_root`). The attempt root belongs entirely to the
 # framework and never enters the artifact namespace, so there is no longer a
@@ -608,6 +653,23 @@ def build_router() -> APIRouter:
         context = json.loads(row["context_json"]) if row and row["context_json"] else (body.context or {})
         timeout_seconds = row["timeout_seconds"] if row and row["timeout_seconds"] is not None else body.timeout_seconds
 
+        # Multi-turn conversation task-definition validation: an invalid
+        # definition is rejected with a 400 at the entry point and no
+        # attempt is created; dispatch runs the same parser as defense in
+        # depth.
+        from .conversation.plan import (
+            CONVERSATION_CONTEXT_KEY,
+            ConversationPlanError,
+            parse_conversation,
+        )
+        if CONVERSATION_CONTEXT_KEY in (context or {}):
+            try:
+                parse_conversation(context[CONVERSATION_CONTEXT_KEY], task_id=task_id)
+            except ConversationPlanError as exc:
+                raise HTTPException(
+                    status_code=400, detail=f"invalid conversation: {exc}"
+                )
+
         run_id = f"run_{uuid.uuid4().hex[:12]}"
 
         attempts_info = []
@@ -675,7 +737,17 @@ def build_router() -> APIRouter:
                 by_category[cat] = by_category.get(cat, 0) + 1
         if isinstance(detail.get("security"), dict):
             detail["security"]["by_category"] = by_category
-        return {**detail, "tool_calls": tool_calls, "events": events, "final_state": final_state}
+        # Conversation block (summary/turns/evaluation). Multi-turn attempts
+        # have a conversation.jsonl; historical single-turn attempts get the
+        # legacy summary + empty turns.
+        conversation = await asyncio.to_thread(_build_conversation_block, attempt_dir)
+        return {
+            **detail,
+            "tool_calls": tool_calls,
+            "events": events,
+            "final_state": final_state,
+            "conversation": conversation,
+        }
 
     @router.get("/runs/{run_id}/attempts/{attempt_id}/thinking")
     async def get_attempt_thinking(run_id: str, attempt_id: str) -> list[dict[str, Any]]:

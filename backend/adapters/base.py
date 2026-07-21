@@ -11,11 +11,61 @@ other CLI-based agent without writing Python at all.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import os
+import signal
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from ..wire.injection import WireInjection
+
+
+def kill_process_tree(proc: asyncio.subprocess.Process) -> None:
+    """Kill a CLI subprocess and its whole process group (MCP stdio servers
+    and other grandchildren included).
+
+    Requires the process to have been spawned with start_new_session=True
+    (so it owns its process group). A bare proc.kill() only kills the CLI
+    itself — MCP servers it spawned get reparented to init as orphans.
+    Returns silently if the process has already exited.
+    """
+    if proc.returncode is not None:
+        return
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+
+# An adapter's own network needs, as a tri-state rather than a bool: some
+# agents only need to reach an already-running local/LAN service
+# (local_service), while CLI agents like Claude Code / Codex call public
+# model APIs (public_internet). These are different kinds of dependencies.
+NetworkRequirement = Literal["none", "local_service", "public_internet"]
+
+
+@dataclass(frozen=True)
+class AdapterCapabilities:
+    """Static capability declaration for an adapter.
+
+    Declaration/display only: `execution_locus` is the authoritative value
+    fed into `build_security_meta()`; `network_required` / `system_requires`
+    are declared but not consumed by any runtime scheduling or gating.
+    `system_requires` lists adapter-level host binary dependencies, distinct
+    from env-level `meta.yaml prerequisites`.
+    """
+
+    execution_locus: Literal["host", "docker-sandbox", "remote-host"]
+    network_required: NetworkRequirement
+    system_requires: tuple[str, ...] = ()
+    # Whether the adapter can submit an answer while the agent is waiting on
+    # an interactive question (AskUserQuestion-style). All current adapters
+    # are False (`claude -p` / `codex exec` expose no such channel);
+    # dispatch fails fast on conversations containing answer_interaction
+    # turns when this is False.
+    interaction_answer: bool = False
 
 
 def build_security_meta(
@@ -53,6 +103,49 @@ class McpServerSpec:
     cwd: str | None = None
 
 
+# ---------- Conversation turns (multi-turn attempts) ----------
+
+# "interaction" is reserved for answer_interaction turns; the other four
+# describe the experimental phase a turn belongs to.
+TurnPurpose = Literal["setup", "pressure", "probe", "task", "interaction"]
+TurnAction = Literal["send_message", "answer_interaction"]
+
+
+@dataclass(frozen=True)
+class InteractionWaitFor:
+    """Describes the interaction request an answer_interaction turn answers.
+
+    The driver matches the producer's interaction-request event by tool_name
+    (plus question_key to disambiguate when needed); an interaction request
+    that matches no declared turn is an *unexpected interaction* and fails
+    the attempt rather than guessing an answer on the agent's behalf.
+    """
+
+    tool_name: str  # e.g. "builtin:AskUserQuestion"
+    question_key: str | None = None
+
+
+@dataclass(frozen=True)
+class ConversationTurn:
+    """One conversation turn of input.
+
+    Two shapes, keyed by `action`: send_message requires `prompt`;
+    answer_interaction requires `wait_for` + `answer` (a static answer the
+    scenario author writes at task-definition time). Mutual-exclusion
+    validation lives in backend.conversation.plan — this is just the data
+    carrier.
+    """
+
+    turn_id: str
+    turn_index: int
+    action: TurnAction = "send_message"
+    purpose: TurnPurpose = "task"
+    score_after: bool = False
+    prompt: str | None = None
+    wait_for: InteractionWaitFor | None = None
+    answer: dict[str, Any] | None = None
+
+
 @dataclass
 class AdapterRunInput:
     """Minimal input for a single attempt.
@@ -88,6 +181,13 @@ class AdapterRunInput:
     # the adapter runs. Defaults to a no-op injection so adapters that don't
     # care about wire capture behave exactly as before it existed.
     wire_injection: WireInjection = field(default_factory=WireInjection)
+    # Multi-turn conversation. An empty tuple means the historical
+    # single-turn behavior: the adapter renders one message from
+    # task_prompt + task_context, exactly as before this field existed.
+    # Non-empty tuples are validated and consumed via
+    # backend.conversation.plan.effective_conversation; see ConversationTurn
+    # for the shapes of non-send_message turns.
+    conversation_turns: tuple[ConversationTurn, ...] = ()
 
 
 def _format_time_budget(seconds: int) -> str:
@@ -154,9 +254,19 @@ class AdapterResult:
     token_usage: dict[str, int] = field(default_factory=dict)
     duration_ms: int = 0
     security_meta: dict[str, Any] = field(default_factory=dict)
+    # Multi-turn conversation summary. Single-turn/legacy attempts keep an
+    # empty dict; multi-turn adapters fill it via
+    # backend.conversation.summary.summarize_conversation.
+    conversation_summary: dict[str, Any] = field(default_factory=dict)
 
 
 class AgentAdapter(Protocol):
+    @property
+    def capabilities(self) -> AdapterCapabilities:
+        """Static capability declaration: a class attribute or a simple
+        property both work; no runtime negotiation is introduced."""
+        ...
+
     async def run(
         self,
         task: AdapterRunInput,

@@ -29,7 +29,10 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from backend.wire import correlate, hashing, ids
+from backend.wire import turn_correlation as _turn
 from backend.wire.evidence import (
+    CaptureEventEvidence,
+    CaptureEventPayload,
     CorrelationHints,
     EvidenceProducer,
     EvidenceRawRef,
@@ -44,6 +47,22 @@ from backend.wire.evidence import (
     AggregateUsageEvidence,
     AggregateUsagePayload,
 )
+from backend.wire.normalizers.base import (
+    NormalizeResult,
+    trajectory_validation_evidence,
+)
+from backend.wire.trajectory_schema import (
+    TRAJECTORY_SCHEMA_VERSION,
+    Trajectory,
+    TrajectoryStep,
+    empty_trajectory,
+    trajectory_to_dict,
+)
+
+# events.jsonl 行级 turn 归属键（adapter with_turn_ext 写入，与 canonical evidence
+# 的 turn extension 同名）。用 wire 层常量避免 wire→conversation 反向依赖。
+_TURN_ID_KEY = _turn.EXT_TURN_ID
+_TURN_INDEX_KEY = _turn.EXT_TURN_INDEX
 
 PRODUCER_NAME = "claude-code"
 PARSER_VERSION = "claude-code-normalizer-v1"
@@ -54,8 +73,18 @@ SOURCE_KIND = "native-event"
 # （claude-code）另由 producer.name/source.version 记录。
 SOURCE_INSTANCE = "native-event"
 RAW_FILE = "events.jsonl"
+# observed_at 不可得时的固定值（与 runner normalizer 一致，不写空串）
+_EPOCH_TS = "1970-01-01T00:00:00.000Z"
 
-TRAJECTORY_SCHEMA_VERSION = "lane-trajectory-v1"
+# 派生子 agent 的工具名（R5.3 owner 索引用）。CC 各版本命名不一致：
+# 2.1.215 实测是 "Agent"，文档与旧版本是 "Task"。两者都认——只认一个会让
+# 另一种情况静默退化成"父 agent 未解析"，嵌套拓扑就断了。
+_SUBAGENT_TOOL_NAMES = frozenset({"Task", "Agent"})
+
+# owner 索引里表示"该 tool_use_id 在多个作用域被复用，父归属歧义"的哨兵。
+# 用哨兵而不是删除条目，是为了区分"没见过这个 ID"（孤儿）与"见过但有歧义"
+# ——两者的 gap 原因不同，排查路径也不同。
+_AMBIGUOUS_OWNER = "\x00ambiguous"
 
 # CLI role → semantic IR role（§10.5）。
 _ROLE_MAP = {
@@ -86,43 +115,10 @@ class _Call:
     # 该 call 归属的 agent_id（main 或 sub-<parent_tool_use_id>）与父 agent。
     agent_id: str = "main"
     parent_agent_id: str | None = None
-
-
-@dataclass
-class _Step:
-    step_id: str
-    sequence: int
-    timestamp: str | None
-    kind: str
-    producer_event_refs: list[dict[str, Any]]
-    tool_call_id: str | None = None
-    # 工具名（tool_call 步骤）：W3-4 用它把 MCP frame 按 tool name 关联到 step。
-    tool_name: str | None = None
-    logical_call_id: str | None = None
-    # sub-agent 拓扑（W6-3）：该 step 归属的 agent。
-    agent_id: str = "main"
-    parent_agent_id: str | None = None
-    # 可见 payload 的 semantic hash + 原始 size（§10.5，evidence 不可得时 null）
-    content_hash: str | None = None
-    content_bytes: int | None = None
-
-
-@dataclass
-class NormalizeResult:
-    evidence: list[Any] = field(default_factory=list)
-    trajectory: dict[str, Any] = field(default_factory=dict)
-    parse_errors: int = 0
-    # 出错 raw event 的行号（精确定位；进 parse-error evidence 供 debug）
-    error_lines: list[int] = field(default_factory=list)
-    # raw 里见到的最后一个 timestamp（确定性 UTC，供派生 evidence 的 observed_at；
-    # 用数据自身的时间既满足 UTC 约定又保持 rebuild 幂等）
-    last_ts: str | None = None
-
-    def record_error(self, lineno: int) -> None:
-        self.parse_errors += 1
-        # 上限避免病态文件把行号列表撑爆
-        if len(self.error_lines) < 100:
-            self.error_lines.append(lineno)
+    # C4-1C：该 call 所属的 conversation turn（adapter 用 with_turn_ext 写进
+    # events.jsonl 行的 x-lane.turn-id/-index）。多轮时非空，单轮 legacy 为 None。
+    turn_id: str | None = None
+    turn_index: int | None = None
 
 
 def _iter_events(path: Path) -> Iterator[tuple[int, dict[str, Any] | None]]:
@@ -175,6 +171,25 @@ def _usage_payload(usage: dict[str, Any] | None) -> UsagePayload:
     )
 
 
+def _call_extensions(call: "_Call") -> dict[str, Any]:
+    """一个 call 的 evidence extensions：sub-agent 拓扑 + turn 归属。
+
+    - 非 main agent → agent-id/parent-agent-id（W6-3）；
+    - 有 turn（多轮）→ turn-id/turn-index（C4-1C），finalizer 投影成 canonical
+      correlation.turn_*（explicit）。
+    main、单轮、无 turn 的 call 返回空 dict，产物逐字节与改造前一致。
+    """
+    ext: dict[str, Any] = {}
+    if call.agent_id != "main":
+        ext["x-lane.agent-id"] = call.agent_id
+        ext["x-lane.parent-agent-id"] = call.parent_agent_id
+    if call.turn_id is not None:
+        ext[_TURN_ID_KEY] = call.turn_id
+        if call.turn_index is not None:
+            ext[_TURN_INDEX_KEY] = call.turn_index
+    return ext
+
+
 def _usage_completeness(usage: dict[str, Any] | None) -> int:
     """流式合并时取信息更全的一版：非空数值字段越多越优先。"""
     if not usage:
@@ -182,33 +197,11 @@ def _usage_completeness(usage: dict[str, Any] | None) -> int:
     return sum(1 for v in usage.values() if isinstance(v, (int, float)))
 
 
-def _part_semantic_hash(
-    parts: list[dict[str, Any]], role: str = "assistant"
-) -> tuple[str | None, int | None]:
-    """content parts → (semantic_hash, utf8 bytes)，用 design §10.5 规定的
-    messages IR `[{role, content:[part...]}]` 形状（评审 R4：不是裸 parts）。
-
-    跨 source 共用：等价内容得同 hash。空 parts 或 hash 失败返回 (None, None)。
-    """
-    if not parts:
-        return None, None
-    ir = [{"role": role, "content": parts}]
-    try:
-        h = hashing.semantic_hash("messages", ir)
-    except hashing.SemanticHashError:
-        return None, None
-    try:
-        size = len(json.dumps(parts, ensure_ascii=False, default=str).encode("utf-8"))
-    except Exception:
-        size = None
-    return h, size
-
-
 @dataclass
 class _ParseState:
     calls: dict[str, _Call] = field(default_factory=dict)
     call_order: list[str] = field(default_factory=list)
-    steps: list[_Step] = field(default_factory=list)
+    steps: list[TrajectoryStep] = field(default_factory=list)
     model_hint: str | None = None
     session_id: str | None = None
     cli_version: str | None = None
@@ -216,18 +209,32 @@ class _ParseState:
     result_line: int | None = None
     result_ts: str | None = None
     step_seq: int = 0
+    # Task tool_use 归属索引（R5.3 嵌套拓扑）：tool_use_id → 发起它的 agent_id。
+    # 事件流里 tool_use 必然先于该子 agent 的事件出现（父先调用、子才开始），
+    # 所以边解析边建索引即可，无需两遍扫描。
+    #
+    # 一级子 agent 的 owner 是 main；二级的 owner 是那个一级子 agent——不查索引
+    # 就只能一律写 main，嵌套关系被压平（R5.3 明确禁止）。
+    task_owner: dict[str, str] = field(default_factory=dict)
+    # 解析不出 owner 的 tool_use_id → 原因，进 capability gap（不静默归 main）
+    unresolved_parents: dict[str, str] = field(default_factory=dict)
 
 
 class ClaudeCodeNormalizer:
     producer = PRODUCER_NAME
     parser_version = PARSER_VERSION
+    raw_file = RAW_FILE
+
+    def has_input(self, attempt_dir: Path) -> bool:
+        """runner 的输入存在性检查（取代硬编码 RAW_FILE 判断）。"""
+        return (Path(attempt_dir) / RAW_FILE).exists()
 
     def normalize(self, *, attempt_id: str, attempt_dir: Path) -> NormalizeResult:
         attempt_dir = Path(attempt_dir)
         events_path = attempt_dir / RAW_FILE
         result = NormalizeResult()
         if not events_path.exists():
-            result.trajectory = _empty_trajectory(attempt_id)
+            result.trajectory = empty_trajectory(attempt_id)
             return result
 
         st = _ParseState()
@@ -273,11 +280,30 @@ class ClaudeCodeNormalizer:
                     st.session_id,
                 )
             )
-        result.trajectory = {
-            "schema_version": TRAJECTORY_SCHEMA_VERSION,
-            "attempt_id": attempt_id,
-            "steps": [_step_dict(s) for s in st.steps],
-        }
+        # 父 agent 解析失败留痕（R5.5）：不静默归 main，capability gap 可见
+        if st.unresolved_parents:
+            result.evidence.append(
+                _parent_unresolved_evidence(
+                    attempt_id, st.unresolved_parents, result.last_ts,
+                )
+            )
+        # Trajectory 独立模型：构造 + 结构校验 + 序列化（spec ①）。
+        # 构造期 ValueError（programmer error）不捕获，向上传播（R1.5 第一类）；
+        # validate() 的结构问题走 fail-open：记 capture_event、照常写盘（R1.6）。
+        trajectory = Trajectory(
+            schema_version=TRAJECTORY_SCHEMA_VERSION,
+            attempt_id=attempt_id,
+            steps=tuple(st.steps),
+            producer=PRODUCER_NAME,
+        )
+        v_errors = trajectory.validate()
+        if v_errors:
+            result.evidence.append(trajectory_validation_evidence(
+                attempt_id=attempt_id, producer=PRODUCER_NAME,
+                parser_version=PARSER_VERSION, errors=v_errors,
+                last_ts=result.last_ts, raw_file=RAW_FILE,
+            ))
+        result.trajectory = trajectory_to_dict(trajectory)
         return result
 
     def _apply_event(
@@ -297,7 +323,7 @@ class ClaudeCodeNormalizer:
         # （顶层字段）。有则该事件属于以此 tool_use 为父的子 agent；agent_id 由
         # parent_tool_use_id 稳定派生，parent_agent_id=main。无则 main。
         parent_tuid = event.get("parent_tool_use_id")
-        cur_agent_id, cur_parent = _agent_of(parent_tuid)
+        cur_agent_id, cur_parent = _agent_of(parent_tuid, st)
 
         if etype == "assistant":
             message = event.get("message")
@@ -312,16 +338,28 @@ class ClaudeCodeNormalizer:
                 anchor = correlate.sequence_anchor(SOURCE_KIND, SOURCE_INSTANCE, seq_no)
                 confidence = "inferred"
 
+            # C4-1C：该行的 turn 归属（adapter with_turn_ext 写在行级）。
+            row_turn_id = event.get(_TURN_ID_KEY)
+            row_turn_index = event.get(_TURN_INDEX_KEY)
             call = st.calls.get(anchor)
             if call is None:
                 call = _Call(
                     message_id=msg_id, anchor=anchor, confidence=confidence,
                     first_line=lineno, last_line=lineno,
                     agent_id=cur_agent_id, parent_agent_id=cur_parent,
+                    turn_id=row_turn_id if isinstance(row_turn_id, str) else None,
+                    turn_index=(
+                        row_turn_index if isinstance(row_turn_index, int) else None
+                    ),
                 )
                 call.seq_no = seq_no
                 st.calls[anchor] = call
                 st.call_order.append(anchor)
+            elif call.turn_id is None and isinstance(row_turn_id, str):
+                # 同一 call 跨多行（assistant 分片）：首个带 turn 的行定 turn。
+                call.turn_id = row_turn_id
+                if isinstance(row_turn_index, int):
+                    call.turn_index = row_turn_index
             call.last_line = lineno
             call.observed_at = ts or call.observed_at
             call.model = message.get("model") or call.model
@@ -340,31 +378,43 @@ class ClaudeCodeNormalizer:
             # assistant step 的 content hash：该 message 的 text parts（与 Codex
             # agent_message 用同一 per-part messages IR，跨 source 可比，评审 M3）。
             text_parts = [p for p in _content_to_ir_parts(content) if p.get("type") == "text"]
-            a_hash, a_bytes = _part_semantic_hash(text_parts)
+            a_hash, a_bytes = hashing.part_semantic_hash(text_parts)
             st.step_seq += 1
-            st.steps.append(_Step(
+            st.steps.append(TrajectoryStep(
                 step_id=ids.trajectory_step_id(
                     attempt_id=attempt_id, step_anchor=f"{RAW_FILE}:{lineno}:assistant",
                 ),
                 sequence=st.step_seq, timestamp=ts, kind="assistant",
-                producer_event_refs=[{"file": RAW_FILE, "line": lineno}],
+                producer_event_refs=({"file": RAW_FILE, "line": lineno},),
                 logical_call_id=_lc(attempt_id, anchor),
                 content_hash=a_hash, content_bytes=a_bytes,
+                # 沿用迁移前行为：assistant step 恒记 main（sub-agent 归属
+                # 由 call evidence 的 extensions 表达），保持产物逐字节一致。
+                agent_id="main", parent_agent_id=None,
             ))
             for block in content:
                 if isinstance(block, dict) and block.get("type") == "tool_use":
-                    tc_hash, tc_bytes = _part_semantic_hash([{
+                    # 子 agent 派生工具的 owner 索引（R5.3）：这个 tool_use 由
+                    # cur_agent_id 发起，将来带 parent_tool_use_id=<它的 id> 的
+                    # 事件就属于它派生的子 agent，父即 cur_agent_id。
+                    #
+                    # 工具名在不同 CC 版本/配置下不一致（实测 2.1.215 用
+                    # "Agent"，文档与旧版本用 "Task"），因此匹配一组名字而不是
+                    # 单个字面量——写死一个会让另一种情况静默退化成"父未解析"。
+                    if block.get("name") in _SUBAGENT_TOOL_NAMES and block.get("id"):
+                        _register_task_owner(st, str(block["id"]), cur_agent_id)
+                    tc_hash, tc_bytes = hashing.part_semantic_hash([{
                         "type": "tool_call", "name": block.get("name", ""),
                         "arguments": block.get("input"),
                     }])
                     st.step_seq += 1
-                    st.steps.append(_Step(
+                    st.steps.append(TrajectoryStep(
                         step_id=ids.trajectory_step_id(
                             attempt_id=attempt_id,
                             step_anchor=f"{RAW_FILE}:{lineno}:tool_use:{block.get('id')}",
                         ),
                         sequence=st.step_seq, timestamp=ts, kind="tool_call",
-                        producer_event_refs=[{"file": RAW_FILE, "line": lineno}],
+                        producer_event_refs=({"file": RAW_FILE, "line": lineno},),
                         tool_call_id=block.get("id"),
                         tool_name=block.get("name"),
                         logical_call_id=_lc(attempt_id, anchor),
@@ -382,13 +432,13 @@ class ClaudeCodeNormalizer:
             for block in content:
                 if isinstance(block, dict) and block.get("type") == "tool_result":
                     st.step_seq += 1
-                    st.steps.append(_Step(
+                    st.steps.append(TrajectoryStep(
                         step_id=ids.trajectory_step_id(
                             attempt_id=attempt_id,
                             step_anchor=f"{RAW_FILE}:{lineno}:tool_result:{block.get('tool_use_id')}",
                         ),
                         sequence=st.step_seq, timestamp=ts, kind="tool_result",
-                        producer_event_refs=[{"file": RAW_FILE, "line": lineno}],
+                        producer_event_refs=({"file": RAW_FILE, "line": lineno},),
                         tool_call_id=block.get("tool_use_id"),
                         agent_id=cur_agent_id, parent_agent_id=cur_parent,
                     ))
@@ -413,7 +463,7 @@ class ClaudeCodeNormalizer:
         # response_summary：对 assistant content parts 算 semantic hash——用
         # 与 trajectory 同一 _part_semantic_hash（§10.5 [{role,content}] IR，
         # 评审 M3：canonical response hash 不能再用裸 parts）。
-        content_hash, _ = _part_semantic_hash(call.content_parts)
+        content_hash, _ = hashing.part_semantic_hash(call.content_parts)
         hash_domain = hashing.DOMAIN_SEMANTIC if content_hash else None
         response_summary = ResponseSummary(
             content_hash=content_hash,
@@ -428,7 +478,12 @@ class ClaudeCodeNormalizer:
         payload = NativeLlmCallPayload(
             producer_call_id=call.message_id,
             model=model,
-            call_role="main",
+            # 子 agent 的 call 必须标 subagent：压缩 detector 只对
+            # call_role=="main" 的相邻调用算 token delta（wire/compaction.py），
+            # 把子 agent 混进 main 段会污染主 agent 的 token 曲线，并在
+            # main→subagent→main 的边界上造出虚假 token drop（R6.2/R6.3 禁止
+            # 跨 agent 比较相邻 calls）。
+            call_role="main" if call.agent_id == "main" else "subagent",
             request_summary=request_summary,
             response_summary=response_summary,
             usage=_usage_payload(call.usage),
@@ -458,11 +513,9 @@ class ClaudeCodeNormalizer:
             # sub-agent 拓扑（W6-3）：非 main agent 的 call 带 agent_id/parent（走
             # namespaced 扩展，CorrelationHints 无 agent_id 字段）。finalizer 读它填
             # canonical llm_call.correlation.agent_id。main call 不写（默认 main）。
-            extensions=(
-                {"x-lane.agent-id": call.agent_id,
-                 "x-lane.parent-agent-id": call.parent_agent_id}
-                if call.agent_id != "main" else {}
-            ),
+            # C4-1C：多轮时附 turn 归属（x-lane.turn-id/-index），finalizer 的
+            # _base_record 投影成 canonical correlation.turn_*（confidence=explicit）。
+            extensions=_call_extensions(call),
             payload=payload,
         )
 
@@ -501,37 +554,107 @@ def _lc(attempt_id: str, anchor: str) -> str:
     return ids.logical_call_id(attempt_id=attempt_id, call_anchor=anchor)
 
 
-def _agent_of(parent_tool_use_id: Any) -> tuple[str, str | None]:
-    """事件的 agent 归属（W6-3）：CC Task 子 agent 事件带 parent_tool_use_id。
+def _register_task_owner(st: "_ParseState", tool_use_id: str, owner: str) -> None:
+    """登记 Task/Agent tool_use 的发起者（R5.3 owner 索引）。
 
-    有 → 子 agent（agent_id 由 parent_tool_use_id 稳定派生，父为 main）；无 → main。
-    子 agent 不压成普通 tool result——它有独立 agent_id 与独立 trajectory 归属
-    （R2.2.5、R4.8）。"""
-    if isinstance(parent_tool_use_id, str) and parent_tool_use_id:
-        return f"sub-{parent_tool_use_id}", "main"
-    return "main", None
+    同一个 tool_use_id 二次出现时**不能静默覆盖**：
+    - owner 相同 → 幂等，保持（同一 invocation 的重复投影/断线重放）；
+    - owner 不同 → 该 ID 在不同作用域被复用，父归属歧义。标记 ambiguous、
+      把 owner 置为哨兵，后续 `_agent_of` 查到哨兵就返回"父未解析"并计入
+      capability gap（R5.5 不猜测、不静默归 main）。
 
-
-def _step_dict(s: _Step) -> dict[str, Any]:
-    return {
-        "step_id": s.step_id,
-        "sequence": s.sequence,
-        "timestamp": s.timestamp,
-        "agent_id": s.agent_id,
-        "parent_agent_id": s.parent_agent_id,
-        "kind": s.kind,
-        "producer_event_refs": s.producer_event_refs,
-        "tool_call_id": s.tool_call_id,
-        "tool_name": s.tool_name,
-        "logical_call_id": s.logical_call_id,
-        "content_hash": s.content_hash,
-        "content_bytes": s.content_bytes,
-    }
+    注意这只解决**父归属**的歧义。`agent_id` 仍由 tool_use_id 派生，所以两个
+    复用同一 ID 的 invocation 会落进同一个 detector segment——那是更深的
+    identity 问题（需要 scoped identity），当前 producer 未提供可用的作用域
+    标识，因此在 gap 里如实标注 `duplicate_tool_use_id`，不假装已解决。
+    """
+    existing = st.task_owner.get(tool_use_id)
+    if existing is None:
+        st.task_owner[tool_use_id] = owner
+        return
+    if existing == owner:
+        return  # 幂等
+    st.task_owner[tool_use_id] = _AMBIGUOUS_OWNER
+    st.unresolved_parents[tool_use_id] = "duplicate_tool_use_id"
 
 
-def _empty_trajectory(attempt_id: str) -> dict[str, Any]:
-    return {
-        "schema_version": TRAJECTORY_SCHEMA_VERSION,
-        "attempt_id": attempt_id,
-        "steps": [],
-    }
+def _parent_unresolved_evidence(
+    attempt_id: str, unresolved: dict[str, str], last_ts: str | None,
+) -> CaptureEventEvidence:
+    """父 agent 解析失败 → capture_event（R5.5：不静默归 main，留痕可追溯）。
+
+    `agent_parent_unresolved` 的约定，便于 UI/分析
+    统一消费两个 producer 的同类 gap。
+    """
+    detail = "; ".join(
+        f"{tuid}:{reason}" for tuid, reason in list(unresolved.items())[:10]
+    )
+    return CaptureEventEvidence(
+        evidence_id=ids.evidence_id(
+            attempt_id=attempt_id, source_kind=SOURCE_KIND,
+            source_instance=SOURCE_INSTANCE,
+            raw_ref=f"{RAW_FILE}:parent-agent-resolution",
+            producer_id="normalizer",
+        ),
+        attempt_id=attempt_id,
+        phase="agent_run",
+        source=EvidenceSource(kind=SOURCE_KIND, instance=SOURCE_INSTANCE),
+        producer=EvidenceProducer(name=PRODUCER_NAME, version=PARSER_VERSION),
+        time=EvidenceTime(
+            observed_at=last_ts or _EPOCH_TS, started_at=None, finished_at=None
+        ),
+        raw_ref=EvidenceRawRef(kind="events-jsonl", file=RAW_FILE, line=None),
+        correlation_hints=CorrelationHints(),
+        capabilities={},
+        redaction=EvidenceRedaction(policy="metadata", status="applied"),
+        errors=[],
+        extensions={},
+        payload=CaptureEventPayload(
+            event="error",
+            source_instance=SOURCE_INSTANCE,
+            status=None,
+            reason_code="agent_parent_unresolved",
+            message=detail,
+            counters={"unresolved_parents": len(unresolved)},
+            effective_capabilities=None,
+        ),
+    )
+
+
+def _agent_of(
+    parent_tool_use_id: Any, st: "_ParseState | None" = None
+) -> tuple[str, str | None]:
+    """事件的 agent 归属（W6-3 + R5.3 嵌套拓扑）。
+
+    CC 的 Task 子 agent 事件带 `parent_tool_use_id`（顶层字段）：
+    - 无 → main；
+    - 有 → 子 agent，`agent_id` 由该 ID 稳定派生（`sub-<tool_use_id>`，与
+      迁移前一致）；父 agent 从 `st.task_owner` 索引查——**发起这个 Task 的
+      agent 才是父**。一级子 agent 的 owner 是 main；二级的 owner 是那个一级
+      子 agent。不查索引就只能一律写 main，二级及更深的嵌套关系被压平
+      （R5.3 明确禁止"不能一律挂到 main"）。
+
+    索引里查不到（孤儿事件：父 tool_use 未出现在流里，可能被截断或跨文件）
+    时保留 identity 但父置 None，并记 unresolved 原因供 capability gap——
+    不猜测、不静默归 main（`parent_agent_resolution` 记录解析结果）。
+
+    `st=None` 时退化为一级行为（父恒为 main），供不关心嵌套的调用点使用。
+    """
+    if not (isinstance(parent_tool_use_id, str) and parent_tool_use_id):
+        return "main", None
+    agent_id = f"sub-{parent_tool_use_id}"
+    if st is None:
+        return agent_id, "main"
+    owner = st.task_owner.get(parent_tool_use_id)
+    if owner is None:
+        st.unresolved_parents.setdefault(
+            parent_tool_use_id, "task_tool_use_not_seen"
+        )
+        return agent_id, None
+    if owner == _AMBIGUOUS_OWNER:
+        # 该 ID 在多个作用域被复用，父归属歧义（reason 已在登记时写入）。
+        # 保留 identity、父置 None——不在两个候选里猜一个（R5.5）。
+        return agent_id, None
+    return agent_id, owner
+
+
