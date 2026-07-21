@@ -1,0 +1,10 @@
+{"timestamp": "2026-07-20T10:22:50.549Z", "type": "thread.started", "thread_id": "019f7f0c-c2aa-77c0-8924-ac7c7cd73d6b", "x-lane.turn-id": "setup", "x-lane.turn-index": 0}
+{"timestamp": "2026-07-20T10:22:50.550Z", "type": "item.completed", "item": {"id": "item_0", "type": "error", "message": "Model metadata for `moonshot/kimi-for-coding` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}, "x-lane.turn-id": "setup", "x-lane.turn-index": 0}
+{"timestamp": "2026-07-20T10:22:50.551Z", "type": "turn.started", "x-lane.turn-id": "setup", "x-lane.turn-index": 0}
+{"timestamp": "2026-07-20T10:22:52.374Z", "type": "item.completed", "item": {"id": "item_1", "type": "agent_message", "text": "已记住"}, "x-lane.turn-id": "setup", "x-lane.turn-index": 0}
+{"timestamp": "2026-07-20T10:22:52.379Z", "type": "turn.completed", "usage": {"input_tokens": 7336, "cached_input_tokens": 7335, "output_tokens": 32, "reasoning_output_tokens": 31}, "x-lane.turn-id": "setup", "x-lane.turn-index": 0}
+{"timestamp": "2026-07-20T10:22:55.912Z", "type": "thread.started", "thread_id": "019f7f0c-c2aa-77c0-8924-ac7c7cd73d6b", "x-lane.turn-id": "probe", "x-lane.turn-index": 1}
+{"timestamp": "2026-07-20T10:22:55.917Z", "type": "item.completed", "item": {"id": "item_0", "type": "error", "message": "Model metadata for `moonshot/kimi-for-coding` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}, "x-lane.turn-id": "probe", "x-lane.turn-index": 1}
+{"timestamp": "2026-07-20T10:22:55.919Z", "type": "turn.started", "x-lane.turn-id": "probe", "x-lane.turn-index": 1}
+{"timestamp": "2026-07-20T10:22:58.318Z", "type": "item.completed", "item": {"id": "item_1", "type": "agent_message", "text": "PELICAN-7723"}, "x-lane.turn-id": "probe", "x-lane.turn-index": 1}
+{"timestamp": "2026-07-20T10:22:58.324Z", "type": "turn.completed", "usage": {"input_tokens": 14696, "cached_input_tokens": 14670, "output_tokens": 69, "reasoning_output_tokens": 81}, "x-lane.turn-id": "probe", "x-lane.turn-index": 1}

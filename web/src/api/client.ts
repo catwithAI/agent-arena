@@ -134,6 +134,54 @@ export type AttemptDetail = AttemptSummary & {
   tool_calls: Array<Record<string, unknown>>;
   events: Array<Record<string, unknown>>;
   final_state: Record<string, unknown>;
+  // 多轮 conversation 块（summary/turns/evaluation）。历史单轮 attempt
+  // 返回 legacy summary + 空 turns。
+  conversation?: AttemptConversation;
+};
+
+// 五种压缩评测状态（backend.wire.evaluation）。
+export type CompactionStatus =
+  | "observed"
+  | "not_observed_under_budget"
+  | "unsupported"
+  | "incomplete"
+  | "insufficient_calls";
+
+export type AttemptConversation = {
+  summary: {
+    is_legacy: boolean;
+    turn_count: number;
+    completed_turn_count?: number;
+    failed_turn_count?: number;
+    last_completed_turn_index?: number | null;
+    producer_session_id?: string | null;
+    session_continuity: "continuous" | "broken" | "unknown";
+    score_turn_id?: string | null;
+    partial?: boolean;
+  };
+  turns: Array<{
+    turn_id: string;
+    turn_index: number | null;
+    purpose: string | null;
+    action: string | null;
+    producer_session_id: string | null;
+    status: string;
+    started_at: string | null;
+    ended_at: string | null;
+    prompt_bytes: number | null;
+    prompt_hash: string | null;
+    error_code: string | null;
+    error_summary: string | null;
+  }>;
+  evaluation: {
+    compaction_status: CompactionStatus;
+    compaction_count: number;
+    retention_score: number | null;
+    task_score: number | null;
+    observability_completeness: "complete" | "partial" | "incomplete";
+    agent_scope: "main" | "subagent" | "mixed" | "none";
+    limitations: string[];
+  };
 };
 
 export type ArtifactStep = {

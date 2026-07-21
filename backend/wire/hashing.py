@@ -16,6 +16,7 @@ Anthropic/OpenAI/Responses 输入因此得到同一 hash。
 from __future__ import annotations
 
 import hashlib
+import json
 import unicodedata
 from typing import Any, Literal
 
@@ -99,3 +100,30 @@ def sort_tools_ir(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     （稳定排序），由调用方另记 parse gap。
     """
     return sorted(tools, key=lambda t: _nfc(str(t.get("name", ""))))
+
+
+def part_semantic_hash(
+    parts: list[dict[str, Any]], role: str = "assistant"
+) -> tuple[str | None, int | None]:
+    """content parts → (semantic_hash, utf8 bytes)，用 design §10.5 规定的
+    messages IR ``[{role, content:[part...]}]`` 形状（评审 R4：不是裸 parts）。
+
+    跨 producer 共用（CC/Codex normalizer 都调它）：等价内容得同 hash。
+    空 parts 或 hash 失败返回 (None, None)，不伪造 hash。
+
+    原 ``claude_code._part_semantic_hash``——它本来就是跨 producer 的公共
+    helper，不应长在某个具体 normalizer 里（codex.py 曾靠函数级动态 import
+    复用）。
+    """
+    if not parts:
+        return None, None
+    ir = [{"role": role, "content": parts}]
+    try:
+        h = semantic_hash("messages", ir)
+    except SemanticHashError:
+        return None, None
+    try:
+        size = len(json.dumps(parts, ensure_ascii=False, default=str).encode("utf-8"))
+    except Exception:
+        size = None
+    return h, size

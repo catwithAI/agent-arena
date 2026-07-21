@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.wire import correlate, evidence as ev, ids, paths, spool, writer
+from backend.wire import turn_correlation as correlate_turn
 from backend.wire.policy import EffectivePolicy
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,25 @@ def _scan_sources(data_path: Path, attempt_id: str) -> list[SourceScan]:
 
 
 def _base_record(item: Any, record_type: str, attempt_id: str, data: dict) -> dict:
+    # 显式 turn（design §6.1）：evidence extensions 带 x-lane.turn-id 时投影进
+    # canonical correlation，confidence=explicit。HTTP proxy source 把 adapter 每轮
+    # 设的 X-Lane-Turn-Id 头写进这个 extension；旧 reader 忽略新字段。
+    # inferred（时间窗口）兜底与 logical-call 合并在 _finalize_attempt_locked 里的
+    # turn_correlation.project_turn_correlation 完成。
+    exp_turn = correlate_turn.explicit_turn(item.extensions or {})
+    correlation: dict[str, Any] = {
+        # sub-agent 拓扑（W6-3）：normalizer 把非 main call 的 agent_id 写进
+        # extensions（x-lane.agent-id），默认 main。子 agent 有独立 agent_id
+        # + parent_agent_id，不压成普通 tool result。
+        "agent_id": (item.extensions or {}).get("x-lane.agent-id") or "main",
+        "parent_agent_id": (item.extensions or {}).get("x-lane.parent-agent-id"),
+        "confidence": "explicit",
+        "producer_session_id": item.correlation_hints.producer_session_id,
+    }
+    if exp_turn is not None:
+        correlation["turn_id"] = exp_turn[0]
+        correlation["turn_index"] = exp_turn[1]
+        correlation["turn_confidence"] = "explicit"
     return {
         "schema_version": "lane-wire-v1",
         "record_id": ids_record(attempt_id, record_type, item.evidence_id),
@@ -127,15 +147,7 @@ def _base_record(item: Any, record_type: str, attempt_id: str, data: dict) -> di
             "started_at": item.time.started_at,
             "finished_at": item.time.finished_at,
         },
-        "correlation": {
-            # sub-agent 拓扑（W6-3）：normalizer 把非 main call 的 agent_id 写进
-            # extensions（x-lane.agent-id），默认 main。子 agent 有独立 agent_id
-            # + parent_agent_id，不压成普通 tool result。
-            "agent_id": (item.extensions or {}).get("x-lane.agent-id") or "main",
-            "parent_agent_id": (item.extensions or {}).get("x-lane.parent-agent-id"),
-            "confidence": "explicit",
-            "producer_session_id": item.correlation_hints.producer_session_id,
-        },
+        "correlation": correlation,
         "provenance": [
             {
                 "evidence_id": item.evidence_id,
@@ -643,12 +655,27 @@ def _finalize_attempt_locked(
     # native call、mcp jsonrpc_id≠agent tool_call_id，union-find 关联不上时的 fallback）。
     # 只补空缺、不覆盖已有 lc，标 confidence=time-proximity 以示是就近推断非精确锚定。
     _associate_orphan_mcp_calls(result.records)
-    # W6-1：被动 compaction 检测——从 canonical main calls 分型，产 context_compaction
-    # record。在 llm_call 有最终 lc 之后跑（before/after_call_id 引用 canonical lc）。
+    # C4-1：turn correlation。explicit（turn header extension）已在 _base_record
+    # 投影；这里补 inferred（conversation.jsonl 时间窗口）兜底并按 logical call
+    # 合并 turn。在 lc 全部确定后跑（logical-call 合并依赖最终 lc），在 compaction
+    # 检测前跑（compaction record 需要 before/after turn，见 detect_compactions）。
+    windows = correlate_turn.load_turn_windows(
+        paths.attempt_dir(data_path, attempt_id)
+    )
+    correlate_turn.project_turn_correlation(result.records, windows)
+    # W6-1/C4-2：compaction 检测——被动分型 + 显式 hint 融合去重（R6.5）。在
+    # llm_call 有最终 lc 之后跑（before/after_call_id 引用 canonical lc）。
+    # detect_compactions **消费**输入里已有的 explicit-hint context_compaction 并
+    # 融合，返回**完整**的 context_compaction 集合——所以这里先剔除旧的
+    # context_compaction、再用检测输出替换，避免显式 record 与融合结果重复。
     try:
         from backend.wire.compaction import detect_compactions
 
-        result.records.extend(detect_compactions(result.records))
+        detected = detect_compactions(result.records)
+        result.records = [
+            r for r in result.records if r.get("record_type") != "context_compaction"
+        ]
+        result.records.extend(detected)
     except Exception:
         logger.exception("compaction 检测失败（忽略，不影响 finalize）")
     # adapter 累计 usage 对账：native 聚合 vs adapter aggregate 差异写 conflict

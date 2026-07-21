@@ -178,7 +178,7 @@ def test_semantic_ir_hash_on_trajectory_steps(tmp_path):
     assert asst["content_bytes"] > 0
     assert tool["content_hash"] and tool["content_bytes"] is not None
     # 等价文本 → 同 hash（per-part messages IR，与 claude 同形状）
-    from backend.wire.normalizers.claude_code import _part_semantic_hash
+    from backend.wire.hashing import part_semantic_hash as _part_semantic_hash
     same, _ = _part_semantic_hash([{"type": "text", "text": "计划：先建立编队"}])
     assert asst["content_hash"] == same
 
@@ -224,7 +224,7 @@ def test_semantic_hash_uses_messages_ir_shape():
     """评审 R4：hash 用 design §10.5 的 [{role, content:[part]}] messages IR，
     不是裸 parts。"""
     from backend.wire import hashing
-    from backend.wire.normalizers.claude_code import _part_semantic_hash
+    from backend.wire.hashing import part_semantic_hash as _part_semantic_hash
 
     parts = [{"type": "text", "text": "hi"}]
     got, _ = _part_semantic_hash(parts)

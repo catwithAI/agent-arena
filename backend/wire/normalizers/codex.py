@@ -3,7 +3,7 @@
 输入：attempt 的 ``events.jsonl``（``codex exec --json`` stdout 逐行）。
 输出：``aggregate_usage`` WireEvidence + ``trajectory.json``。
 
-W1-2 spike 决议（§27.1）：agent-arena 现状用 ``--ephemeral``，不落 internal
+W1-2 spike 决议（§27.1）：Octagon 现状用 ``--ephemeral``，不落 internal
 session rollout，逐调用 ``token_count.last_token_usage`` 不可得；stdout 每次
 exec 只有 1 个 ``turn.completed``（整 turn 累计 usage），逐次 agent_message 无
 per-call usage。因此**首期只产 attempt 级 aggregate，不伪造逐调用曲线**——
@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator
 
-from backend.wire import ids
+from backend.wire import hashing, ids
 from backend.wire.evidence import (
     AggregateUsageEvidence,
     AggregateUsagePayload,
@@ -42,12 +42,16 @@ from backend.wire.evidence import (
     EvidenceTime,
     UsagePayload,
 )
-from backend.wire.normalizers.claude_code import (
+from backend.wire.normalizers.base import (
     NormalizeResult,
+    trajectory_validation_evidence,
+)
+from backend.wire.trajectory_schema import (
     TRAJECTORY_SCHEMA_VERSION,
-    _Step,
-    _empty_trajectory,
-    _step_dict,
+    Trajectory,
+    TrajectoryStep,
+    empty_trajectory,
+    trajectory_to_dict,
 )
 
 PRODUCER_NAME = "codex"
@@ -58,6 +62,24 @@ RAW_FILE = "events.jsonl"
 
 # stdout 只能给 attempt 级累计——逐调用边界不可得（§27.1）。
 CALL_BOUNDARY = "aggregate-only"
+
+# normalizer 声明的 capability（R6.6 / R3.3.5：manifest 必须明确报 gap）。
+#
+# `subagent_identity=false` 是**可执行的**能力声明，不只写在文档里——评测/
+# manifest 据此判定子 agent 压缩 unsupported，而不是靠人读 spike 文档。
+#
+# 措辞限定到被测版本：C3-3 spike 在 codex-cli 0.144.5 上观察到无子 agent
+# 能力（CLI 无相关命令、agent 自述无此工具、事件 schema 零归属字段），
+# 这**不等于**产品永久不会有。schema 变化时需重新评估——
+# `test_codex_multiturn_normalizer.py` 的 schema 断言会在那时失败提醒。
+OBSERVED_CLI_VERSION = "codex-cli 0.144.5"
+CAPABILITIES: dict[str, Any] = {
+    "call_boundary": CALL_BOUNDARY,
+    "subagent_identity": False,
+    "subagent_identity_basis": (
+        f"not observed in {OBSERVED_CLI_VERSION}（C3-3 spike）"
+    ),
+}
 
 
 def _iter_events(path: Path) -> Iterator[tuple[int, dict[str, Any] | None]]:
@@ -92,25 +114,33 @@ def _usage_from_turn(usage: dict[str, Any] | None) -> UsagePayload:
 
 @dataclass
 class _State:
-    steps: list[_Step] = field(default_factory=list)
+    steps: list[TrajectoryStep] = field(default_factory=list)
     step_seq: int = 0
     session_id: str | None = None
     turn_usage: dict[str, Any] | None = None
     turn_line: int | None = None
     turn_ts: str | None = None
     last_ts: str | None = None
+    # 见过的所有 thread ID（按出现顺序去重）。多轮 attempt 正常情况下只有
+    # 一个；出现多个说明 resume 落到了不同 thread，上下文已断裂（R2.3）。
+    session_ids: list[str] = field(default_factory=list)
 
 
 class CodexNormalizer:
     producer = PRODUCER_NAME
     parser_version = PARSER_VERSION
+    raw_file = RAW_FILE
+
+    def has_input(self, attempt_dir: Path) -> bool:
+        """runner 的输入存在性检查（取代硬编码 RAW_FILE 判断）。"""
+        return (Path(attempt_dir) / RAW_FILE).exists()
 
     def normalize(self, *, attempt_id: str, attempt_dir: Path) -> NormalizeResult:
         attempt_dir = Path(attempt_dir)
         events_path = attempt_dir / RAW_FILE
         result = NormalizeResult()
         if not events_path.exists():
-            result.trajectory = _empty_trajectory(attempt_id)
+            result.trajectory = empty_trajectory(attempt_id)
             return result
 
         st = _State()
@@ -135,22 +165,45 @@ class CodexNormalizer:
 
         # aggregate usage evidence（§27.1：只此一条，不伪造逐调用）
         if st.turn_usage is not None:
+            # 跨 thread 的 aggregate 不标单一 session ID：那会把先前 thread 的
+            # 消耗错误归给某一个（R2.3 session continuity broken）。此时置
+            # None 并另发 capability gap，让下游知道"这份 aggregate 跨了会话"。
+            spans_multiple = len(st.session_ids) > 1
             result.evidence.append(
                 self._aggregate_evidence(
-                    attempt_id, st.turn_usage, st.turn_line, st.turn_ts, st.session_id
+                    attempt_id, st.turn_usage, st.turn_line, st.turn_ts,
+                    None if spans_multiple else st.session_id,
                 )
             )
+            if spans_multiple:
+                result.evidence.append(
+                    self._session_broken_evidence(
+                        attempt_id, st.session_ids, st.last_ts,
+                    )
+                )
         elif st.steps:
             # 观察到 item 但无 turn.completed（如中断）：写明确的 usage gap，
             # 不伪造 aggregate（评审 B1）。trajectory + capability 仍产出。
             result.evidence.append(
                 self._usage_gap_evidence(attempt_id, st.last_ts, st.session_id)
             )
-        result.trajectory = {
-            "schema_version": TRAJECTORY_SCHEMA_VERSION,
-            "attempt_id": attempt_id,
-            "steps": [_step_dict(s) for s in st.steps],
-        }
+        # Trajectory 独立模型：构造 + 结构校验 + 序列化（spec ①）。codex 的
+        # kind 集合无 tool_result，配对规则天然跳过（trajectory_schema 按
+        # producer 分发）。构造期 ValueError 向上传播；validate() 走 fail-open。
+        trajectory = Trajectory(
+            schema_version=TRAJECTORY_SCHEMA_VERSION,
+            attempt_id=attempt_id,
+            steps=tuple(st.steps),
+            producer=PRODUCER_NAME,
+        )
+        v_errors = trajectory.validate()
+        if v_errors:
+            result.evidence.append(trajectory_validation_evidence(
+                attempt_id=attempt_id, producer=PRODUCER_NAME,
+                parser_version=PARSER_VERSION, errors=v_errors,
+                last_ts=st.last_ts, raw_file=RAW_FILE,
+            ))
+        result.trajectory = trajectory_to_dict(trajectory)
         return result
 
     def _apply_event(
@@ -158,7 +211,12 @@ class CodexNormalizer:
         st: "_State", ts: Any,
     ) -> None:
         if etype == "thread.started":
-            st.session_id = event.get("thread_id") or st.session_id
+            tid = event.get("thread_id")
+            if isinstance(tid, str) and tid and tid not in st.session_ids:
+                st.session_ids.append(tid)
+            # session_id 保留**首个** thread ID：它是这个 attempt 的身份。
+            # 用最后一个会把先前 thread 的消耗错误地归给新 thread。
+            st.session_id = st.session_id or tid
             return
         if etype == "turn.completed":
             usage = event.get("usage")
@@ -209,19 +267,21 @@ class CodexNormalizer:
         # agent_message.text → messages IR；tool call → tools/args IR。
         content_hash, content_bytes = _item_semantic_hash(itype, item)
         st.step_seq += 1
-        st.steps.append(_Step(
+        st.steps.append(TrajectoryStep(
             step_id=ids.trajectory_step_id(
                 attempt_id=attempt_id,
                 step_anchor=f"{RAW_FILE}:{lineno}:{itype}:{item_id}",
             ),
             sequence=st.step_seq, timestamp=ts, kind=kind,
-            producer_event_refs=[{"file": RAW_FILE, "line": lineno}],
+            producer_event_refs=({"file": RAW_FILE, "line": lineno},),
             tool_call_id=tool_id,
             tool_name=_tool_name,
             # aggregate-only：无逐调用 lc，trajectory step 不挂 logical_call_id
             logical_call_id=None,
             content_hash=content_hash,
             content_bytes=content_bytes,
+            # codex --ephemeral 无 sub-agent 语义，恒 main（与迁移前一致）
+            agent_id="main", parent_agent_id=None,
         ))
 
     def _usage_gap_evidence(
@@ -243,7 +303,7 @@ class CodexNormalizer:
             time=EvidenceTime(observed_at=ts or "", started_at=None, finished_at=None),
             raw_ref=EvidenceRawRef(kind="events-jsonl", file=RAW_FILE, line=None),
             correlation_hints=CorrelationHints(producer_session_id=session_id),
-            capabilities={"call_boundary": CALL_BOUNDARY, "usage": "not-observed"},
+            capabilities={**CAPABILITIES, "usage": "not-observed"},
             redaction=EvidenceRedaction(policy="metadata", status="applied"),
             errors=[],
             extensions={},
@@ -251,6 +311,46 @@ class CodexNormalizer:
                 event="error", source_instance=SOURCE_INSTANCE, status=None,
                 reason_code="usage_not_observed", message="观察到工具/消息但无 turn.completed usage",
                 counters=None, effective_capabilities=None,
+            ),
+        )
+
+    def _session_broken_evidence(
+        self, attempt_id: str, session_ids: list[str], ts: str | None
+    ):
+        """一个 attempt 里出现多个 thread ID：session 连续性断裂（R2.3）。
+
+        resume 落到了不同 thread，上下文已断——aggregate 跨了多个会话，不能
+        标单一 session ID，压缩/保真度结论也不成立。留痕供 evaluation summary
+        判 `incomplete`，不静默把消耗归给其中一个。
+        """
+        from backend.wire.evidence import CaptureEventEvidence, CaptureEventPayload
+
+        return CaptureEventEvidence(
+            evidence_id=ids.evidence_id(
+                attempt_id=attempt_id, source_kind=SOURCE_KIND,
+                source_instance=SOURCE_INSTANCE,
+                raw_ref="codex:session-continuity", producer_id="normalizer",
+            ),
+            attempt_id=attempt_id,
+            phase="agent_run",
+            source=EvidenceSource(kind=SOURCE_KIND, instance=SOURCE_INSTANCE),
+            producer=EvidenceProducer(name=PRODUCER_NAME, version=PARSER_VERSION),
+            time=EvidenceTime(observed_at=ts or "", started_at=None, finished_at=None),
+            raw_ref=EvidenceRawRef(kind="events-jsonl", file=RAW_FILE, line=None),
+            correlation_hints=CorrelationHints(producer_session_id=None),
+            capabilities=dict(CAPABILITIES),
+            redaction=EvidenceRedaction(policy="metadata", status="applied"),
+            errors=[],
+            extensions={},
+            payload=CaptureEventPayload(
+                event="error", source_instance=SOURCE_INSTANCE, status=None,
+                reason_code="session_continuity_broken",
+                message=(
+                    "一个 attempt 出现多个 thread ID："
+                    + ", ".join(session_ids[:5])
+                ),
+                counters={"session_count": len(session_ids)},
+                effective_capabilities=None,
             ),
         )
 
@@ -273,7 +373,7 @@ class CodexNormalizer:
             correlation_hints=CorrelationHints(producer_session_id=session_id),
             # capabilities 声明逐调用边界不可得——finalizer/manifest 据此标
             # call_boundary=aggregate-only（R2.1.5：不伪装边界）。
-            capabilities={"call_boundary": CALL_BOUNDARY},
+            capabilities=dict(CAPABILITIES),
             redaction=EvidenceRedaction(policy="metadata", status="applied"),
             errors=[],
             extensions={},
@@ -299,23 +399,21 @@ def _item_semantic_hash(itype: str, item: dict[str, Any]) -> tuple[str | None, i
 
     返回 (content_hash, content_bytes)；无法取内容时 (None, None)，不伪造 hash。
     """
-    from backend.wire.normalizers.claude_code import _part_semantic_hash
-
     if itype == "agent_message":
         text = item.get("text")
         if not isinstance(text, str):
             return None, None
-        return _part_semantic_hash([{"type": "text", "text": text}])
+        return hashing.part_semantic_hash([{"type": "text", "text": text}])
     if itype == "mcp_tool_call":
         name = f"{item.get('server', '')}.{item.get('tool', '')}"
-        return _part_semantic_hash([{
+        return hashing.part_semantic_hash([{
             "type": "tool_call", "name": name, "arguments": item.get("arguments"),
         }])
     if itype == "command_execution":
         cmd = item.get("command")
         if not isinstance(cmd, str):
             return None, None
-        return _part_semantic_hash([{
+        return hashing.part_semantic_hash([{
             "type": "tool_call", "name": "command_execution", "arguments": cmd,
         }])
     return None, None

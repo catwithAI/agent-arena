@@ -38,6 +38,7 @@ import httpx
 
 from backend.model_providers import ModelProviderSection, resolve_api_key
 from backend.wire import ids, paths, spool
+from backend.wire import turn_correlation as turn_corr
 from backend.wire.evidence import (
     CaptureEventEvidence,
     CaptureEventPayload,
@@ -278,6 +279,11 @@ class _HopContext:
     # 正文超采集上限标记（评审 #6）：转发不受影响，仅表示采集侧未完整解析/落 blob。
     request_body_truncated: bool = False
     response_body_truncated: bool = False
+    # C4-1：本轮的显式 turn（adapter 每轮请求前设的 X-Lane-Turn-Id/-Index），
+    # 从 inbound header 提取。写进 evidence extensions x-lane.turn-id/-index，
+    # finalizer 据此投影 canonical correlation。None=adapter 未设（走时间窗口兜底）。
+    turn_id: str | None = None
+    turn_index: int | None = None
     # 流式采集态（W4-3）：
     chunk_seq: int = 0
     dropped_chunks: int = 0
@@ -322,6 +328,12 @@ def _http_exchange_evidence(
         extensions["x-lane.request-body-truncated"] = True
     if hop.response_body_truncated:
         extensions["x-lane.response-body-truncated"] = True
+    # C4-1：本轮显式 turn（design §6.1）。finalizer 投影进 canonical correlation，
+    # confidence=explicit。adapter 未设 turn header 时不写（走时间窗口 inferred）。
+    if hop.turn_id:
+        extensions[turn_corr.EXT_TURN_ID] = hop.turn_id
+        if hop.turn_index is not None:
+            extensions[turn_corr.EXT_TURN_INDEX] = hop.turn_index
     return HttpExchangeEvidence(
         evidence_id=ids.evidence_id(
             attempt_id=hop.attempt_id, source_kind=SOURCE_KIND,
@@ -503,6 +515,27 @@ def _is_stripped_inbound_header(name: str) -> bool:
     return any(low.startswith(prefix) for prefix in _INBOUND_STRIP_PREFIXES)
 
 
+def _extract_turn(headers: dict[str, str]) -> tuple[str | None, int | None]:
+    """从 inbound header 提取本轮 turn（C4-1，design §6.1）。
+
+    ``X-Lane-Turn-Id``（稳定 turn_id）+ 可选 ``X-Lane-Turn-Index``（十进制
+    整数）。这两个头属 x-lane-* inbound-strip 前缀——只用于内部 correlation，
+    绝不转发给 upstream。header dict 已由 forward 归一成小写 key。turn_id 缺失返回
+    (None, None)；turn_index 非整数字符串时降 None（有 id 无 index 仍算显式）。
+    """
+    turn_id = headers.get(turn_corr.HEADER_TURN_ID)
+    if not turn_id:
+        return None, None
+    raw_idx = headers.get(turn_corr.HEADER_TURN_INDEX)
+    turn_index: int | None = None
+    if raw_idx is not None:
+        try:
+            turn_index = int(raw_idx)
+        except (ValueError, TypeError):
+            turn_index = None
+    return turn_id, turn_index
+
+
 def _is_reserved_upstream_header(name: str) -> bool:
     """该 header 是否为代理控制的保留头，custom_headers 不得覆盖（评审 #5）。"""
     low = name.lower()
@@ -596,6 +629,11 @@ async def forward(
     hop_anchor = f"{provider}:{_PROCESS_GENERATION}:{id(body)}:{started_at}"
     authority = _authority_of(provider_cfg.base_url)
     scheme = "https" if provider_cfg.base_url.startswith("https") else "http"
+    # C4-1：本轮显式 turn（inbound header，小写归一后查找）。adapter 每轮请求前设，
+    # 只作内部 correlation、不转发给 upstream（x-lane-* 属 inbound-strip 前缀）。
+    turn_id, turn_index = _extract_turn(
+        {k.lower(): v for k, v in headers.items()}
+    )
 
     hop = None
     if entry is not None:
@@ -607,6 +645,7 @@ async def forward(
             request_summary=request_summary, request_body_ref=req_body_ref,
             request_body_truncated=req_truncated,
             started_at=started_at, start_monotonic=_monotonic(),
+            turn_id=turn_id, turn_index=turn_index,
         )
 
     # 建立 upstream 流式连接。连接/建立阶段的失败：写一条 partial hop 并抛

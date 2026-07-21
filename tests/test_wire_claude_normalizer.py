@@ -65,7 +65,8 @@ def test_canonical_response_hash_uses_messages_ir(tmp_path):
     """评审 M3：canonical response_summary.content_hash 用 §10.5 messages IR
     （[{role, content}]），不是裸 parts。"""
     import json as _json
-    from backend.wire.normalizers.claude_code import _content_to_ir_parts, _part_semantic_hash
+    from backend.wire.hashing import part_semantic_hash as _part_semantic_hash
+    from backend.wire.normalizers.claude_code import _content_to_ir_parts
 
     d = paths.attempt_dir(tmp_path, ATT)
     d.mkdir(parents=True, exist_ok=True)

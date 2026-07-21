@@ -1,0 +1,34 @@
+name: context-compaction-benchmark
+schema_version: "1.0"
+type: context-compaction
+category: multi-turn-retention
+test_focus: "多轮/子 agent 上下文压缩下的信息保真度（retention）与压缩可观测性诊断。"
+description: >
+  标准压缩评测环境（context_compaction_evaluation C5-3）。用固定 seed 确定性生成
+  setup facts + pressure filler，三阶段（setup→pressure→probe）多轮对话把上下文推向
+  压缩，probe 回问 setup facts 检验保真度。scorer 复用 backend.wire 的 retention
+  scorer 与 evaluation summary：task_completion 计分，retention 与
+  compaction_observability 默认为独立诊断维度（不进总分）。
+pass_threshold: 50
+requires_isolated_home: false
+
+# 运行前置（见 docs/env-prerequisites.md）
+prerequisites:
+  level: none
+  summary: "只需 agent 能读取多轮 prompt 并把答案写进工作目录的 probe_answers.json；材料与 facts manifest 已入库，运行不动态生成。"
+  requires:
+    - "支持多轮 conversation 的 adapter（single-turn adapter 只跑 legacy 首轮，retention 会偏低）"
+  on_missing: "无 probe_answers.json → task_completion=0；无 wire capture → compaction_observability=incomplete（不冒充 observed）。"
+
+# 维度权重：task_completion 计分；retention / compaction 为诊断（weight=0 不进总分，
+# design §522：默认不改历史 benchmark 口径，retention 只作独立诊断指标）。
+dimensions:
+  - name: task_completion
+    weight: 100
+    description: probe 产出可解析的 probe_answers.json 且至少答对一个 fact。
+  - name: retention
+    weight: 0
+    description: （诊断）probe 对 setup facts 的保真度（backend.wire.retention）。
+  - name: compaction_observability
+    weight: 0
+    description: （诊断）五态压缩状态（backend.wire.evaluation），未触发不判失败。

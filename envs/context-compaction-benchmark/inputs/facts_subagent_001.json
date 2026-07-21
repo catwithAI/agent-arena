@@ -1,0 +1,36 @@
+{
+  "schema_version": "lane-compaction-facts-v1",
+  "generator_version": "lane-compaction-materials-v1",
+  "seed": 20260721,
+  "fact_count": 6,
+  "pressure_records": 400,
+  "bytes": 27485,
+  "estimated_tokens": 6871,
+  "content_sha256": "aeeceb8c294e992ffd5ab709168d04c0573791e18cf37e2d23a80cd6031f6d7e",
+  "facts": [
+    {
+      "id": "fact-01",
+      "answer_hash": "sha256:deca40b3c7c5a1bf884580a9bb02832792f9f89c212534cc9add8a96f6bd0b3b"
+    },
+    {
+      "id": "fact-02",
+      "answer_hash": "sha256:059dd4c286066431a841abaee16d421ed0318ce2223f9e12d8854c0926b32a1e"
+    },
+    {
+      "id": "fact-03",
+      "answer_hash": "sha256:8d83ca2f1df3465cf2581c2642ae03c151bb8511060df62bfb6a787d093a7476"
+    },
+    {
+      "id": "fact-04",
+      "answer_hash": "sha256:b26a98aef423c31c15d9b154d16616522a775db2bdc8534ba167e45de433aedd"
+    },
+    {
+      "id": "fact-05",
+      "answer_hash": "sha256:d7fb9ed24f2e718ea4c9e1f79dfc4257f294c5b7938b181ea2a41ec28957c377"
+    },
+    {
+      "id": "fact-06",
+      "answer_hash": "sha256:8c40eed8aa46d318ded79c127741a5c98c8780d0bf20ae22f502ac96faa02bed"
+    }
+  ]
+}

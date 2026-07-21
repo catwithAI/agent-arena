@@ -35,13 +35,9 @@ from backend.wire.evidence import (
     EvidenceTime,
     UsagePayload,
 )
-from backend.wire.normalizers.claude_code import (
-    ClaudeCodeNormalizer,
-    PARSER_VERSION,
-    RAW_FILE,
-    TRAJECTORY_SCHEMA_VERSION,
-)
+from backend.wire.normalizers.claude_code import ClaudeCodeNormalizer
 from backend.wire.normalizers.codex import CodexNormalizer
+from backend.wire.trajectory_schema import TRAJECTORY_SCHEMA_VERSION
 
 _NORMALIZERS = {
     "claude-code": ClaudeCodeNormalizer,
@@ -65,7 +61,7 @@ def _derived_ts(last_ts: str | None) -> str:
 
 def _parse_error_evidence(
     attempt_id: str, parse_errors: int, error_lines: list[int], last_ts: str | None,
-    producer: tuple[str, str | None] = ("claude-code", PARSER_VERSION),
+    producer: tuple[str, str | None], raw_file: str,
 ) -> CaptureEventEvidence:
     """把 normalizer 的 parse-error 数汇报成 capture_event（cumulative counter）。
 
@@ -86,7 +82,7 @@ def _parse_error_evidence(
         producer=EvidenceProducer(name=producer[0], version=producer[1]),
         time=EvidenceTime(observed_at=_derived_ts(last_ts), started_at=None, finished_at=None),
         raw_ref=EvidenceRawRef(
-            kind="events-jsonl", file=RAW_FILE,
+            kind="events-jsonl", file=raw_file,
             line=error_lines[0] if error_lines else None,
         ),
         correlation_hints=CorrelationHints(),
@@ -107,8 +103,8 @@ def _parse_error_evidence(
 
 
 def _adapter_aggregate_evidence(
-    attempt_id: str, usage: dict[str, Any], last_ts: str | None = None,
-    producer: tuple[str, str | None] = ("claude-code", PARSER_VERSION),
+    attempt_id: str, usage: dict[str, Any], last_ts: str | None,
+    producer: tuple[str, str | None],
 ) -> AggregateUsageEvidence:
     """adapter 累计 usage 作为 ``scope="adapter"`` 的 aggregate evidence：
     finalize 拿它与 native 聚合对账，差异写 manifest conflict（§10.1）。"""
@@ -159,7 +155,10 @@ def run_native_normalizer(
         return False
     data_path = Path(data_path)
     attempt_dir = paths.attempt_dir(data_path, attempt_id)
-    if not (attempt_dir / RAW_FILE).exists():
+    # 输入存在性由 normalizer 自己声明（harbor_capability_migration spec ②）：
+    # 不再硬编码单一 RAW_FILE 文件名——那会让需要读其他输入文件的 normalizer
+    # 降级路径永远不可达。CC/Codex 的 has_input 与原判断等价。
+    if not normalizer.has_input(attempt_dir):
         # raw 缺失：保留旧产物，不重建成零调用（评审 B2）
         return False
 
@@ -201,6 +200,9 @@ def run_native_normalizer(
                 writer_.append(_parse_error_evidence(
                     attempt_id, result.parse_errors, result.error_lines,
                     result.last_ts, producer,
+                    # 实际读取的输入文件优先（normalizer 降级读其他输入
+                    # 文件时不能指向 events.jsonl），未声明回落静态 raw_file
+                    result.raw_file or getattr(normalizer, "raw_file", "events.jsonl"),
                 ))
             # adapter 累计 usage 对账证据（评审 M4）
             if adapter_usage:
