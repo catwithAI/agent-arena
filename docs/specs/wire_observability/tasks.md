@@ -54,7 +54,7 @@ m9→W1-6，m10→W0-4，nit4→W0-5，nit5→W0-6。
 
 ---
 
-## W0 · Foundation（design §23 Phase 0）
+## W0 · 基础能力（设计 §23 阶段 0）
 
 - [x] **W0-1 canonical models + WireEvidence v1**　★★
   - `backend/wire/models.py`：envelope + `llm_call`/`http_exchange`/`stream_chunk`/
@@ -147,7 +147,7 @@ m9→W1-6，m10→W0-4，nit4→W0-5，nit5→W0-6。
   - _验收：`tests/test_wire_manifest.py` 增补 —— 模拟崩溃残留 spool 重启后
     `recovered`；无法恢复标 `failed`；不会重复 finalize 已完成 attempt。_
 
-## W1 · Native events（design §23 Phase 1）
+## W1 · 原生事件（设计 §23 阶段 1）
 
 - [x] **W1-1 Claude normalizer + 最小 trajectory**　★★★
   - `backend/wire/normalizers/claude_code.py`：design §10.1 状态机（message id 合并、
@@ -236,7 +236,7 @@ m9→W1-6，m10→W0-4，nit4→W0-5，nit5→W0-6。
 **W1-7 只完成可观测性摘要 M1；W1-8/W1-9 完成后，用户才具备可读、可定位的调用级
 体验。此时再把 W1 视为前端闭环，并做一次端到端验收 + 部署 49。**
 
-## W2 · llm-gateway connector（design §23 Phase 2,外部依赖）
+## W2 · llm-gateway 连接器（设计 §23 阶段 2，外部依赖）
 
 - [ ] **W2-1 外部 API contract 评审**　★（文档任务,**第一周就该并行启动**）
   - 按 design §11.1 与 llm-gateway 仓库对齐 calls/compactions 只读 API 的 schema/
@@ -262,7 +262,7 @@ m9→W1-6，m10→W0-4，nit4→W0-5，nit5→W0-6。
   - calls table 增列 + call 展开 provenance/conflicts/hops（design §20）。
   - _验收：tsc;conflict 有 UI 呈现不被静默。_
 
-## W3 · MCP stdio tap（design §23 Phase 3,系统编程风险区）
+## W3 · MCP 标准输入输出采集（设计 §23 阶段 3，系统编程风险区）
 
 - [x] **W3-1 透明 pump 骨架**　★★★（先做,它验证整个 tap 的可行性）
   - `backend/wire/mcp_tap.py`:bytes pump、stderr 隔离、SIGTERM/SIGINT 传播进程组;
@@ -306,7 +306,7 @@ dispatch `_build_wire_sources` 给 CC/Codex 挂）；finalize `_associate_mcp_tr
 capture fail-open、rewrite、trajectory 关联。后端 mcp/normalizer/manifest 全绿。
 **W3-1~3 达成 → 最小完成目标（§28：W0+W1+(W2或W4)+W3-1~3+W1-8/9）齐了。**
 
-## W4 · agent-arena reverse HTTP capture（design §23 Phase 4,系统编程风险区）
+## W4 · agent-arena HTTP 反向采集（设计 §23 阶段 4，系统编程风险区）
 
 - [x] **W4-1 反向代理骨架 + 转发正确性**　★★★（W4-4 后执行，验证转发不改变行为）
   - `backend/wire/sources/http_proxy.py` + `api.py` 内部路由
@@ -340,15 +340,14 @@ capture fail-open、rewrite、trajectory 关联。后端 mcp/normalizer/manifest
     metadata 档不落 body,full 档 blob 可回读。_
 
 - [x] **W4-4 provider 配置统一(canonical protocol + auth_mode)**　★★（W4 组先做）
-  - `model_providers.py`:`kind` before-validator 接受新旧值统一为 canonical
-    (`vllm-responses`→`openai-responses`,design §15.1);新增
-    `auth_mode: bearer|api-key`(design §15.2),bearer/api-key 分别注入
+  - `model_providers.py`：`kind` 使用 `anthropic|openai-chat|openai-responses`，
+    `wire_protocol()` 映射为 Wire 规范名称（设计 §15.1）；新增
+    `auth_mode: bearer|api-key`（设计 §15.2），两种模式分别注入
     `ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_API_KEY`,**不做 token 值转写**;
-    `wire_api` deprecated 但校验一致性、否则 fail fast(评审 m5);codex 走非
-    Responses provider 时 adapter 启动前 fail fast(评审 m6,R15.5)。
-  - _验收：`tests/test_model_provider_protocol_migration.py` —— 旧 kind 规范化 +
-    legacy-input test;既有 lane.yaml 零改动加载通过(现有 provider 测试回归);
-    bearer/api-key 注入互斥且无转写;codex+anthropic-messages 组合被拒。_
+    `wire_api` 供 Codex 校验协议一致性，否则快速失败；Codex 走非 Responses
+    Provider 时在适配器启动前拒绝（评审 m6，R15.5）。
+  - _验收：Provider 协议映射、bearer/api-key 注入互斥且无转写；
+    Codex 与非 Responses Provider 的组合被拒。_
 
 - [x] **W4-5 前端 payload/blob 展示（policy 门控）**　★
   - _已完成（2026-07-14）：HopBody/BlobView 按 policy 区分——parsed 档只给「解析视图
@@ -435,7 +434,7 @@ provider 的 comparison run 会自动采集并把 hop 桥接到 native call。W4
     finalize 后失效；metadata 零 body、full 可从 W4-5 查看脱敏后的 system/messages/tools/
     assistant output；429/retry/SSE partial 保持主通信语义，验证能力边界。_
 
-## W5 · Sandbox transparent redirect spike（design §23 Phase 5,高风险)
+## W5 · 沙盒透明重定向预研（设计 §23 阶段 5，高风险）
 
 - [ ] **W5-1 沙盒透明重定向 spike（metadata 档）**　★★★（时间盒)
   - 仅在 agent-arena 可控 container 拓扑下:shared-netns sidecar + nftables redirect
@@ -452,7 +451,7 @@ provider 的 comparison run 会自动采集并把 hop 桥接到 native call。W4
   - _验收：capability matrix 文档 —— 每类被测进程 CA 注入成功/失败/pinning 降级
     结论;失败自动降 metadata、cleanup 删 key/cert 只留 fingerprint。_
 
-## W6 · 完整分析与扩展（design §23 Phase 6）
+## W6 · 完整分析与扩展（设计 §23 阶段 6）
 
 - [x] **W6-1 compaction detector**　★★
   - `backend/wire/aggregate.py`:相邻 main call 的 token/message/hash diff 分型
@@ -509,7 +508,7 @@ _W6-2 前端曲线渲染留作后续（后端派生已就绪，前端可经新 A
   - _验收：通过的 TLS 栈能解析并按 policy 记录；未通过的 TLS 栈不拦断主通信且 manifest
     明确 downgrade reason；cleanup 后无 CA private key 残留。_
 
-## W7 · RunDetail Office 产物预览（横向前端能力，非 wire blob）
+## W7 · 运行详情 Office 产物预览（横向前端能力，非 Wire Blob）
 
 > 当前 artifact API 把除图片/音视频外的文件统一当 UTF-8 文本返回，`.pptx/.docx/.xlsx`
 > 会显示压缩包乱码。W7 面向 agent 生成的业务产物，复用 artifact 权限与路径边界，但与
@@ -622,7 +621,7 @@ _W6-2 前端曲线渲染留作后续（后端派生已就绪，前端可经新 A
   W5-1/W5-2(沙盒/CA)都是"先验证可行性再投入实现"的时间盒任务,结论不乐观时
   对应 Phase 降级而非硬扛。
 
-## 完成定义(对齐 design §28)
+## 完成定义（对齐设计 §28）
 
 最小完成 = W0 全部 + W1 全部 + (W2 或 W4 之一) + W3-1~3 + W1-8/W1-9
 调用检查器。达成后:

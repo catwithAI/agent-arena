@@ -1,3 +1,8 @@
-# GDPval Prepaid Amortization DB
+# GDPval 预付费用摊销数据库环境
 
-This adapts official GDPval task `7d7fc9a7-21a7-4b83-906f-416dea5ad04f`, which has six source files and 66 invoices. The agent edits `amortization.db`; the scorer compares invoice-level facts and official monthly GL balances deterministically. No LLM judge or MCP is used.
+本环境改编自 GDPval 官方任务 `7d7fc9a7-21a7-4b83-906f-416dea5ad04f`，包含
+6 个源文件和 66 张发票。Agent 需要生成并编辑 `amortization.db`；评分器以确定性
+方式核对发票级事实和官方总账月末余额，不使用 LLM Judge，也不提供 MCP 工具。
+
+评分维度为发票事实保真度（60%）、余额勾稽（30%）和数据库完成状态（10%）。
+任务材料与期望状态随环境入库，完整运行只需要 Python 3 标准库。

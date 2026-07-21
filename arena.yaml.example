@@ -1,5 +1,5 @@
-# agent-lane local config template.
-# Copy to agentlane.yaml (already gitignored) and fill in real values.
+# agent-arena local config template.
+# Copy to arena.yaml (already gitignored) and fill in real values.
 # Environment variables override this file — see the comment on each field.
 
 lane:
@@ -19,6 +19,16 @@ lane:
   # env: LANE_PUBLIC_BASE_URL
   public_base_url: "http://127.0.0.1:8100"
 
+  # Wire capture is off unless a run requests it. Raw/parsed blob retrieval
+  # remains disabled by default because the API has no per-user auth yet.
+  # env: LANE_WIRE_BLOB_API_ENABLED
+  wire_blob_api_enabled: false
+
+  # Optional server-side ceiling: off | metadata | parsed | full.
+  # The effective policy is the stricter of this value and the run request.
+  # env: LANE_WIRE_CAPTURE_MAX_POLICY
+  # wire_capture_max_policy: metadata
+
 # Third-party model providers usable by the claude-code / codex adapters.
 # Referenced from a run's `model` field as "<provider>/<model>", e.g.
 # "openrouter/glm-5". API key resolution order: the named environment
@@ -32,11 +42,11 @@ lane:
 #
 # model_providers:
 #   openrouter:
-#     kind: openai-chat        # anthropic | openai-chat | openai-responses
+#     kind: openai-responses   # anthropic | openai-chat | openai-responses
 #     base_url: "https://openrouter.ai/api/v1"
 #     api_key_env: "OPENROUTER_API_KEY"
 #     # api_key: "sk-or-v1-xxxx"  # optional fallback if the env var isn't set
-#     wire_api: "chat"         # codex only; ignored for anthropic-kind providers
+#     wire_api: "responses"    # Codex custom providers must use responses
 
 # Suggested model strings for the UI's model dropdown (free text still works).
 # model_suggestions:
@@ -45,7 +55,7 @@ lane:
 #   - "openrouter/glm-5"
 
 # Any other CLI-based agent, keyed by the agent name used in `POST /runs`.
-# This is how you bring your own agent to agent-lane without writing a
+# This is how you bring your own agent to agent-arena without writing a
 # Python adapter — see backend/adapters/custom_cli.py for the full field
 # reference.
 #
@@ -54,3 +64,14 @@ lane:
 #     command: ["my-agent-cli", "--prompt-file", "{prompt_file}"]
 #     prompt_mode: file        # stdin | file | arg
 #     output_format: text      # text | jsonl
+#     # mcp_config_flag: "--mcp-config"
+
+# Optional remote Claude Code adapter. It is registered as ssh-claude-code
+# only when ssh_host is set. Prefer the LANE_SSH_CLAUDE_PASSWORD environment
+# variable over storing a password here.
+#
+# ssh_claude_code:
+#   ssh_host: "10.0.0.5"
+#   ssh_user: "ai"
+#   ssh_password: ""
+#   max_budget_usd: 5.0

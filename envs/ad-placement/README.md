@@ -6,8 +6,6 @@ AtCoder 需要在首页为 n 家公司放置广告。广告区域是一个 10000
 
 第 i 家公司希望获得一个矩形广告区域。这个矩形必须包含点 `(x_i + 0.5, y_i + 0.5)`，并且面积尽量接近期望面积 `r_i`。你需要为所有公司确定广告矩形，使总满意度尽可能高。
 
-![题目可视化示例](assets/visualization.png)
-
 ## 约束
 
 - 每个广告区域必须是边与坐标轴平行、顶点坐标为整数、面积为正的矩形
@@ -154,15 +152,15 @@ round(100 * total_score / (cases * 1_000_000_000))
 ## 目录结构
 
 ```text
-(你的工作目录)
+envs/ad-placement/
 ├── README.md                  # 本说明文件
-├── solution.cpp               # 最终提交文件
-├── assets/
-│   └── visualization.png      # 题目可视化示例
-└── tools/
-    ├── README.md              # 工具使用说明
-    ├── bin/
-    │   ├── gen                # 输入生成器
-    │   └── tester             # 评分程序
-    └── src/                   # Rust 源码，可用于参考或重新编译
+├── meta.yaml                  # 环境元数据与评分维度
+├── tasks/                     # 预置任务
+├── inputs/cases/              # 50 个固定评测用例
+└── tools/bin/
+    ├── gen                    # 输入生成器
+    └── tester                 # 官方评分程序
 ```
+
+Agent 的最终 `solution.cpp` 写入各 Attempt 的独立 `skill_workspace/`，不会写回
+上述环境目录。

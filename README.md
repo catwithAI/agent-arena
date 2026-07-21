@@ -1,63 +1,82 @@
 # agent-arena
 
-[中文文档](README-cn.md)
+[中文说明](README-cn.md)
 
-An open benchmark harness for comparing coding agents on the same tasks —
-same prompt, same tools, same scoring. Ships with reference adapters for
-**Claude Code** and **Codex** as baselines, plus an extension point for
-plugging in *any* other agent — config-only for CLI-based agents, or a
-small Python adapter for full control.
+An open benchmark harness for comparing coding agents and models on the same
+tasks, inputs, budgets, and scoring rules. It includes first-party adapters for
+**Claude Code** and **Codex**, supports configuration-only CLI agents, and can
+run multi-agent, same-model, or multi-model comparisons.
 
-Every comparison run captures execution (tool calls, errors, timing),
-reasoning (thinking traces, where the agent exposes them), and the final
-result (score, code, artifacts) — side by side, for as many agents as you
-want to compare.
-
-This is an open project for the community, not limited to Claude Code and
-Codex — the adapter interface exists so any agent (open-source, commercial,
-or a research prototype) can be plugged in. It's also built to scale past
-one-shot comparisons: running N agents concurrently, each repeated across
-multiple trials on the same task, to get statistically meaningful results
-rather than a single noisy run.
+Each attempt records the agent's execution, exposed reasoning, tool trace,
+token usage, artifacts, scores, security observations, and—when enabled—wire
+evidence for model and MCP calls. Multi-turn tasks keep a resumable conversation
+record and expose context-compaction diagnostics.
 
 ## Quick start
 
+Requirements: Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js/npm, and
+at least one supported agent CLI (`claude` or `codex`) on `PATH`.
+
 ```bash
 uv sync
-cp arena.yaml.example arena.yaml   # defaults work for local, single-machine use
+cp arena.yaml.example arena.yaml
 uv run uvicorn backend.main:create_app --factory --port 8100
 
-cd web && npm install && npm run dev
+cd web
+npm install
+npm run dev
 ```
 
-Open the frontend (default `http://127.0.0.1:5173`), pick an environment,
-select the agents you have installed (`claude-code`/`codex` must be on
-`PATH`), and run.
+Open `http://127.0.0.1:5173`. The API is available at
+`http://127.0.0.1:8100`; `GET /api/selfcheck` reports configuration,
+environment loading, token authentication, and trace-write health.
 
-To route claude-code/codex through a third-party model provider (see
-`model_providers` in `arena.yaml.example`), make sure its API key is
-available before starting the backend — either export the env var named by
-`api_key_env` (`cp .env.example .env`, fill it in, then `source .env`), or
-fill in the provider's `api_key` field directly in `arena.yaml` (it's
-gitignored). If neither is set for a provider a run references, the attempt
-fails immediately with a clear `provider_api_key_missing` error instead of a
-confusing CLI login error.
+For third-party model providers, configure `model_providers` in
+`arena.yaml`. Keep the API key in the environment variable named by
+`api_key_env` (see `.env.example`) or in the gitignored local `arena.yaml`.
+Provider references use `<provider>/<model>`, for example
+`openrouter/openai/gpt-5`.
 
 ## Included environments
 
-- **order-desk** — a tool-using environment: search a mock book catalog and
-  place an order under a budget constraint.
-- **cpp-optimizer** — a pure-coding environment: submit a C++17 solution,
-  scored by compiling and batch-running it against hidden test cases.
+| Environment | Focus | Extra requirements |
+|---|---|---|
+| `order-desk` | MCP tool use and budget constraints | None |
+| `cpp-optimizer` | C++17 correctness and optimization | C++ compiler |
+| `ad-placement` | Batch-scored heuristic optimization | Linux + C++17 toolchain |
+| `apple-incremental-game` | Long-horizon strategy optimization | Python 3 |
+| `edgebench-juliet` | Facts-level static vulnerability analysis | Python 3 + Bash |
+| `gdpval-prepaid-amortization-db` | Deterministic accounting extraction | Python 3 |
+| `gdpval-prepaid-amortization-official` | Official rubric judged Excel deliverable | Anthropic-compatible judge |
+| `ppt-visual-repair` | Presentation usability and design taste | LibreOffice + multimodal judge |
+| `context-compaction-benchmark` | Multi-turn retention and compaction observability | Multi-turn-capable adapter recommended |
 
-See [docs/environments.md](docs/environments.md) to add your own.
+Environment prerequisites are warn-only and shown before submission. Run the
+contract linter after adding or changing an environment:
 
-## Docs
+```bash
+uv run python scripts/lint_env.py --all
+```
 
-- [docs/README.md](docs/README.md) — full design overview
-- [docs/architecture.md](docs/architecture.md) — how the pieces fit together
-- [docs/environments.md](docs/environments.md) — writing a new evaluation environment
-- [docs/agents.md](docs/agents.md) — plugging in a new agent
+## Documentation
+
+- [Chinese documentation index](docs/README.md)
+- [Architecture](docs/architecture.md)
+- [Agent integration](docs/agents.md)
+- [Environment development](docs/environments.md)
+- [Environment prerequisites](docs/env-prerequisites.md)
+
+All documents under `docs/` are maintained in Chinese. Environment material
+under `envs/*/materials/` may intentionally stay in the task's delivery
+language because it is part of the benchmark input.
+
+## Verification
+
+```bash
+uv run pytest
+uv run ruff check backend lane tests scripts
+cd web && npm test && npm run build
+```
 
 ## License
 

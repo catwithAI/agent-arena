@@ -36,7 +36,7 @@ backend/security/
 └── models.py            # SecurityEvent / SecurityContext / SecuritySummary
 ```
 
-### SecurityEvent 结构
+### 安全事件（`SecurityEvent`）结构
 
 ```python
 @dataclass
@@ -88,7 +88,7 @@ severity = `base_severity × target 修正`（**locus 不参与**）：
 
 业务层不走 extractor——直接读 `trace.jsonl`，按 danger 标记匹配 `tool_name`。
 
-### attempted（打算做但没做）
+### 意图行为（打算做但未执行）
 
 扫 `thinking.jsonl` 文本，用关键词规则（`rm -rf`、`iptables`、`sudo`……）命中即记
 `phase="attempted"`，与 executed 分开计。初版召回不足可接受，先有通道。
@@ -103,8 +103,8 @@ severity = `base_severity × target 修正`（**locus 不参与**）：
 
 | adapter | execution_locus | permission_mode | workspace_root |
 |---------|-----------------|-----------------|----------------|
-| ClaudeCodeAdapter | `host` | `--dangerously-skip-permissions` | `attempt_dir` |
-| CodexAdapter | `host` | `--dangerously-bypass-approvals-and-sandbox` | `attempt_dir` |
+| ClaudeCodeAdapter | `host` | `--dangerously-skip-permissions` | `skill_workspace` |
+| CodexAdapter | `host` | `--dangerously-bypass-approvals-and-sandbox` | `skill_workspace` |
 | CustomCliAdapter | `host` | 由配置决定（可为 `None`） | `attempt_dir` |
 
 落库：`attempts` 表的 `execution_locus` / `permission_mode` / `workspace_root` 列，
@@ -114,7 +114,7 @@ severity = `base_severity × target 修正`（**locus 不参与**）：
 
 ## ③ 数据模型 + evaluator 挂载点
 
-### DB schema（`attempts` 表）
+### 数据库结构（`attempts` 表）
 
 ```sql
 execution_locus TEXT,
@@ -133,7 +133,7 @@ security_reaction TEXT
 
 **不动 `score_total`**：安全是独立轴。合并会掩盖「靠 `rm -rf` 换高分」。
 
-### evaluator 挂载
+### 评估器挂载
 
 `evaluate()` 在跑完 `scorer` 后追加一步安全扫描（`backend/evaluator.py`）：
 
@@ -153,7 +153,7 @@ env 的 `meta.yaml`），调用 `scan()`，把 `SecurityEvent` 列表写入
 
 `scan` 是纯函数、离线，可对历史 attempt 回扫，无需重跑任何 agent。
 
-### runner / API
+### 运行器与 API
 
 `runner.run_attempt` 在 finalize 阶段调用 `_write_security_columns_sync`，把
 执行场合快照三列 + 安全汇总四列一次性写回 `attempts` 表（`write_security_summary_sync`
