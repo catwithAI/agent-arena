@@ -12,6 +12,16 @@ import { ConversationPanel } from "./ConversationPanel";
 export { WirePanel } from "../wire/WirePanel";
 export { ArtifactsPanel } from "../artifacts/ArtifactsPanel";
 
+// Column labels go by attempt, not by agent name: in a multi-model run the
+// same agent_name appears once per model, so a duplicated name gets the
+// model appended to stay distinguishable.
+export function attemptLabel(att: AttemptSummary, atts: AttemptSummary[]): string {
+  const dup = atts.filter((x) => x.agent_name === att.agent_name).length > 1;
+  if (!dup) return att.agent_name;
+  const model = att.model_used ?? att.model;
+  return model ? `${att.agent_name} (${model})` : `${att.agent_name} #${att.id.slice(-4)}`;
+}
+
 // ── event parsing (claude-code stream-json / codex --json) ──
 
 type EventBlock =
@@ -277,11 +287,13 @@ function AttemptRack({
   attempt,
   rank,
   leader,
+  label,
 }: {
   runId: string;
   attempt: AttemptSummary;
   rank: number | null;
   leader: boolean;
+  label?: string;
 }) {
   const [tab, setTab] = useState<TabKey>("transcript");
   const { detail, artifacts } = useAttemptDetail(runId, attempt);
@@ -291,7 +303,7 @@ function AttemptRack({
       <div className="rack-head">
         <span className="rack-name">
           <span className={dotClass(attempt, leader)} />
-          {attempt.agent_name}
+          {label ?? attempt.agent_name}
           {rank !== null && <span className="mx-rank">#{rank}</span>}
         </span>
         <span className={`state-tag ${attempt.status}`}>{attempt.status}</span>
@@ -324,12 +336,14 @@ function MatrixCell({
   rank,
   leader,
   tab,
+  label,
 }: {
   runId: string;
   attempt: AttemptSummary;
   rank: number | null;
   leader: boolean;
   tab: TabKey;
+  label?: string;
 }) {
   const { detail, artifacts } = useAttemptDetail(runId, attempt);
 
@@ -338,7 +352,7 @@ function MatrixCell({
       <div className="mx-head">
         <span className="mx-name">
           <span className={dotClass(attempt, leader)} />
-          {attempt.agent_name}
+          {label ?? attempt.agent_name}
         </span>
         <span className="mx-rank">
           {rank !== null ? `#${rank} · ${attempt.score_total}` : attempt.status}
@@ -469,7 +483,13 @@ export function RunDetail() {
           )}
         </div>
         <h1 className="run-title">
-          {run.env_name} · {run.attempts.length} 个 Agent 并发评测
+          {run.env_name} ·{" "}
+          {run.compare_mode === "multi-model"
+            ? `${run.attempts[0]?.agent_name ?? ""} × ${run.attempts.length} 模型对比`
+            : run.compare_mode === "same-model"
+              ? `${run.attempts.length} 个 Agent 同模型对比`
+              : `${run.attempts.length} 个 Agent 并发评测`}
+          {run.execution === "serial" && " · 排队执行"}
         </h1>
       </div>
 
@@ -518,6 +538,7 @@ export function RunDetail() {
                   attempt={openedAttempt}
                   rank={rankOf.get(openedAttempt.id) ?? null}
                   leader={openedAttempt.id === leaderId}
+                  label={attemptLabel(openedAttempt, run.attempts)}
                 />
               </div>
             )}
@@ -551,6 +572,7 @@ export function RunDetail() {
                   rank={rankOf.get(a.id) ?? null}
                   leader={a.id === leaderId}
                   tab={matrixTab}
+                  label={attemptLabel(a, run.attempts)}
                 />
               ))}
             </div>

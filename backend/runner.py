@@ -53,6 +53,7 @@ async def create_attempt(
     *,
     run_id: str | None = None,
     model: str | None = None,
+    compare_mode: str = "multi-agent",
 ) -> tuple[AttemptModel, str]:
     """Creates an attempt + session token. Returns (model, cleartext token).
 
@@ -69,6 +70,7 @@ async def create_attempt(
         agent_name=agent_name,
         run_id=run_id,
         model_name=model,
+        compare_mode=compare_mode,
     )
 
 
@@ -79,6 +81,7 @@ def _create_attempt_sync(
     agent_name: str,
     run_id: str | None,
     model_name: str | None = None,
+    compare_mode: str = "multi-agent",
 ) -> tuple[AttemptModel, str]:
     attempt_id = f"att_{uuid.uuid4().hex[:12]}"
     run_id = run_id or f"run_{attempt_id[4:]}"
@@ -95,9 +98,9 @@ def _create_attempt_sync(
         existing_run = conn.execute("SELECT id FROM runs WHERE id=?", (run_id,)).fetchone()
         if existing_run is None:
             conn.execute(
-                "INSERT INTO runs(id, task_id, env_name, status, created_at)"
-                " VALUES(?, ?, ?, 'queued', ?)",
-                (run_id, task_id, env_name, now),
+                "INSERT INTO runs(id, task_id, env_name, status, compare_mode, created_at)"
+                " VALUES(?, ?, ?, 'queued', ?, ?)",
+                (run_id, task_id, env_name, compare_mode, now),
             )
 
         conn.execute(

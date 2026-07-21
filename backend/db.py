@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS runs (
     task_id TEXT NOT NULL REFERENCES tasks(id),
     env_name TEXT NOT NULL,
     status TEXT NOT NULL,
+    -- multi-agent (default) | same-model | multi-model
+    compare_mode TEXT NOT NULL DEFAULT 'multi-agent',
+    -- serial | parallel; NULL = legacy rows created before the column existed
+    execution TEXT,
     created_at TEXT NOT NULL,
     started_at TEXT,
     ended_at TEXT
@@ -143,11 +147,31 @@ def _open_sync(db_path: Path) -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+def _migrate_sync(conn: sqlite3.Connection) -> None:
+    """Column-level migrations for DBs created before a schema addition.
+
+    `CREATE TABLE IF NOT EXISTS` never alters existing tables, so new
+    columns must be added here (check-then-ALTER, idempotent).
+    """
+    run_cols = {r[1] for r in conn.execute("PRAGMA table_info(runs)").fetchall()}
+    if "compare_mode" not in run_cols:
+        conn.execute("ALTER TABLE runs ADD COLUMN compare_mode TEXT NOT NULL DEFAULT 'multi-agent'")
+    if "execution" not in run_cols:
+        conn.execute("ALTER TABLE runs ADD COLUMN execution TEXT")
+
+
+def _migrate_file(db_path: Path) -> None:
+    with _open_sync(db_path) as conn:
+        _migrate_sync(conn)
+        conn.commit()
+
+
 async def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(db_path) as conn:
         await conn.executescript(_SCHEMA)
         await conn.commit()
+    _migrate_file(db_path)
 
 
 def resolve_db_path(data_path: Path) -> Path:
@@ -161,6 +185,7 @@ def _init_db_sync(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with _open_sync(db_path) as conn:
         conn.executescript(_SCHEMA)
+        _migrate_sync(conn)
         conn.commit()
 
 
@@ -172,6 +197,7 @@ async def open_db(data_path: Path) -> aiosqlite.Connection:
     await conn.executescript(_SCHEMA)
     await conn.execute("PRAGMA journal_mode=WAL")
     await conn.commit()
+    _migrate_file(db_path)
     return conn
 
 

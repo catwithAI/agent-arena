@@ -25,7 +25,7 @@ import shutil
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request
@@ -39,6 +39,24 @@ from .run_dispatch import known_agents
 from .runner import create_attempt
 
 logger = logging.getLogger(__name__)
+
+
+async def _dispatch_serial(run_id: str, jobs: list[dict[str, Any]]) -> None:
+    """Runs the attempts one after another (execution="serial"): the next
+    attempt starts only after the previous one finished. Used when attempts
+    would compete for exclusive resources (e.g. a local model)."""
+    state = runtime_state.get()
+    for job in jobs:
+        task = asyncio.create_task(dispatch_attempt(**job))
+        state.active_tasks[run_id] = [task]
+        try:
+            await task
+        except asyncio.CancelledError:
+            logger.info("serial dispatch cancelled at attempt=%s", job.get("attempt_id"))
+            break
+        except Exception as exc:
+            logger.exception("serial dispatch crashed attempt=%s", job.get("attempt_id"), exc_info=exc)
+    state.active_tasks.pop(run_id, None)
 
 
 async def _dispatch_all(run_id: str, jobs: list[dict[str, Any]]) -> None:
@@ -108,9 +126,23 @@ class CreateRunRequest(BaseModel):
     # prompt and the adapter enforces no wall-clock deadline.
     timeout_seconds: int | None = 1000
     agents: list[str] = Field(default=["claude-code", "codex"])
-    # single model applied to every agent, or a per-agent {agent: model} map
+    # multi-agent (default): each agent in `agents` runs once.
+    # same-model: >=2 distinct agents share one bare model (models is a
+    #   {agent: model} map covering every agent, or a single `model`).
+    # multi-model: exactly one agent runs once per entry of `models`
+    #   (a list of model ids) — same agent, N attempts.
+    compare_mode: str = "multi-agent"
+    # single model applied to every agent, or a per-agent {agent: model} map,
+    # or (multi-model only) a list of models for the one selected agent
     model: str | None = None
-    models: dict[str, str] | None = None
+    models: dict[str, str] | list[str] | None = None
+    # serial (queue attempts back to back) | parallel. Default per mode:
+    # same-model runs serial (a local model is an exclusive resource),
+    # everything else parallel.
+    execution: str | None = None
+    # Requested wire capture level, intersected with the server maximum;
+    # applied identically to every attempt of the fan-out.
+    capture_policy: Literal["off", "metadata", "parsed", "full"] | None = None
     # legacy convenience: a single agent name
     agent: str | None = None
 
@@ -121,9 +153,38 @@ class CreateRunRequest(BaseModel):
         return self
 
     def model_for(self, agent_name: str) -> str | None:
-        if self.models:
+        if isinstance(self.models, dict):
             return self.models.get(agent_name, self.model)
         return self.model
+
+
+def _resolve_same_model_models(body: CreateRunRequest, agents: list[str]) -> dict[str, str]:
+    """Per-agent model resolution for same-model mode.
+
+    A `models` dict must cover every agent — no silent fallback to a default
+    model, because the whole point of a same-model comparison is explicit
+    control over what each agent runs. The single-value `model` expands to
+    all agents (compatible with existing callers).
+    """
+    if isinstance(body.models, dict):
+        missing = [a for a in agents if not body.models.get(a)]
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"same-model mode: models must cover every agent, missing: {missing}",
+            )
+        return {a: body.models[a] for a in agents}
+    if body.models is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="same-model mode: models must be an {agent: model} map",
+        )
+    if body.model:
+        return {a: body.model for a in agents}
+    raise HTTPException(
+        status_code=400,
+        detail="same-model mode requires model or models",
+    )
 
 
 # ---------- DB helpers ---------------------------------------------------------
@@ -191,7 +252,7 @@ def _list_runs_sync(db_path: Path, *, limit: int = 50) -> list[dict[str, Any]]:
     with _open_sync(db_path) as conn:
         rows = conn.execute(
             "SELECT r.id AS run_id, r.task_id, r.env_name, r.status AS run_status,"
-            " r.created_at, r.started_at, r.ended_at,"
+            " r.compare_mode, r.execution, r.created_at, r.started_at, r.ended_at,"
             " (SELECT COUNT(*) FROM attempts a WHERE a.run_id=r.id) AS attempt_count"
             " FROM runs r ORDER BY r.created_at DESC LIMIT ?",
             (limit,),
@@ -530,6 +591,16 @@ def _attempt_change_signature(attempt_dir: Path) -> tuple[Any, ...]:
 
 # OpenRouter 全量模型列表：给模型下拉列裸模型名。几百个模型 + 接口有延迟，
 # 模块级 TTL 缓存 + Lock 防并发穿透；失败时回退旧缓存（stale-while-error）。
+def _arch_modalities(m: dict[str, Any], key: str) -> list[str]:
+    arch = m.get("architecture")
+    if not isinstance(arch, dict):
+        return []
+    values = arch.get(key)
+    if not isinstance(values, list):
+        return []
+    return [v for v in values if isinstance(v, str)]
+
+
 _OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 _OR_CACHE_TTL_SECONDS = 600.0
 _or_models_cache: dict[str, Any] = {"data": None, "expires_at": 0.0}
@@ -568,6 +639,12 @@ async def _openrouter_models() -> dict[str, Any]:
                     "id": m["id"],
                     "name": m.get("name") or m["id"],
                     "context_length": m.get("context_length"),
+                    # architecture.input/output_modalities: the frontend shows
+                    # capability badges and cross-checks them against the env's
+                    # declared agent_modalities (e.g. an image-input env run
+                    # with a text-only model is doomed before it starts).
+                    "input_modalities": _arch_modalities(m, "input_modalities"),
+                    "output_modalities": _arch_modalities(m, "output_modalities"),
                 }
                 for m in raw
                 if isinstance(m, dict) and isinstance(m.get("id"), str)
@@ -643,6 +720,53 @@ def build_router() -> APIRouter:
             if ag not in allowed:
                 raise HTTPException(status_code=400, detail=f"unknown agent: {ag!r}, known: {allowed}")
 
+        if body.compare_mode not in ("multi-agent", "same-model", "multi-model"):
+            raise HTTPException(
+                status_code=400, detail=f"unknown compare_mode: {body.compare_mode!r}"
+            )
+        if body.execution not in (None, "serial", "parallel"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown execution: {body.execution!r}, expected serial | parallel",
+            )
+        execution = body.execution or (
+            "serial" if body.compare_mode == "same-model" else "parallel"
+        )
+
+        same_model_map: dict[str, str] | None = None
+        if body.compare_mode == "same-model":
+            if len(agents) < 2:
+                raise HTTPException(
+                    status_code=400, detail="same-model mode requires at least 2 agents"
+                )
+            if len(set(agents)) != len(agents):
+                raise HTTPException(
+                    status_code=400, detail="same-model mode: agents must be distinct"
+                )
+            same_model_map = _resolve_same_model_models(body, agents)
+
+        if body.compare_mode == "multi-model":
+            if len(agents) != 1:
+                raise HTTPException(
+                    status_code=400, detail="multi-model mode requires exactly one agent"
+                )
+            if not isinstance(body.models, list) or len(body.models) < 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail="multi-model mode: models must be a list of at least 2 entries",
+                )
+
+        # Job plan: one (agent_name, model) per attempt. multi-model iterates
+        # over models with the single agent fixed; the other modes iterate
+        # over agents.
+        if body.compare_mode == "multi-model":
+            job_plan = [(agents[0], m) for m in (body.models or [])]
+        elif body.compare_mode == "same-model":
+            assert same_model_map is not None
+            job_plan = [(a, same_model_map[a]) for a in agents]
+        else:
+            job_plan = [(a, body.model_for(a)) for a in agents]
+
         task_id, env_name = _get_or_create_adhoc_task_sync(state.db_path, body)
 
         with _open_sync(state.db_path) as conn:
@@ -674,10 +798,10 @@ def build_router() -> APIRouter:
 
         attempts_info = []
         dispatch_jobs = []
-        for agent_name in agents:
-            agent_model = body.model_for(agent_name)
+        for agent_name, agent_model in job_plan:
             attempt, session_token = await create_attempt(
-                task_id=task_id, agent_name=agent_name, run_id=run_id, model=agent_model
+                task_id=task_id, agent_name=agent_name, run_id=run_id,
+                model=agent_model, compare_mode=body.compare_mode,
             )
             dispatch_jobs.append(
                 {
@@ -691,12 +815,22 @@ def build_router() -> APIRouter:
                     "env_name": env_name,
                     "session_token": session_token,
                     "model": agent_model,
+                    # The same requested policy applies to every attempt of
+                    # the fan-out.
+                    "capture_policy": body.capture_policy,
                 }
             )
             attempts_info.append(
                 {"attempt_id": attempt.id, "agent": agent_name, "model": agent_model, "status": attempt.status}
             )
-        background_tasks.add_task(_dispatch_all, run_id, dispatch_jobs)
+        # The run row was created by the first create_attempt; record the
+        # execution mode after the fact.
+        with _open_sync(state.db_path) as conn:
+            conn.execute("UPDATE runs SET execution=? WHERE id=?", (execution, run_id))
+            conn.commit()
+
+        dispatcher = _dispatch_serial if execution == "serial" else _dispatch_all
+        background_tasks.add_task(dispatcher, run_id, dispatch_jobs)
 
         return {
             "run_id": run_id,
