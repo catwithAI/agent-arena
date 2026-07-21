@@ -10,7 +10,7 @@
 
 ---
 
-## Phase 1：① 安全分类器 + ③ 数据模型 ✅ 完成
+## 阶段 1：① 安全分类器 + ③ 数据模型 ✅ 完成
 
 - [x] `backend/security/models.py`：`SecurityEvent` dataclass（layer/category/severity/
       phase/command/target/locus/hitl_status/rule_id/source_ref）+ `SecuritySummary`
@@ -52,13 +52,13 @@
 
 ---
 
-## Phase 2：② 执行场合快照（各 adapter 落 locus/permission_mode）✅ 完成
+## 阶段 2：② 执行场合快照（各适配器记录 locus/permission_mode）✅ 完成
 
 - [x] `AdapterResult` 加 `security_meta: dict` + `base.build_security_meta()` 共享构造器
 - [x] `claude_code.py`：locus=host、permission_mode=`--dangerously-skip-permissions`、
-      workspace_root=attempt_dir（真实启动参数，非推断）
+      workspace_root=skill_workspace（真实启动参数，非推断）
 - [x] `codex.py`：locus=host、permission_mode=`--dangerously-bypass-approvals-and-sandbox`、
-      workspace_root=attempt_dir
+      workspace_root=skill_workspace
 - [x] `custom_cli.py`：locus=host、workspace_root=attempt_dir
 - [x] `runner`：`security_meta` 随 AdapterResult 写入 execution_locus/
       permission_mode/workspace_root 三列（`_write_security_columns_sync`）
@@ -69,7 +69,7 @@
 
 ---
 
-## Phase 3：API 挂载 ✅ 完成
+## 阶段 3：API 挂载 ✅ 完成
 
 - [x] attempt 详情端点返回 `security` 块（event_count/max_severity/hitl/reaction/
       by_category）；`by_category` 从 `security_events.jsonl` 明细现算

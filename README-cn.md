@@ -2,58 +2,77 @@
 
 [English](README.md)
 
-一个开源的 agent 评测框架，用同一批任务、同一套工具、同一套评分标准，
-公平地比较不同的 coding agent。内置 **Claude Code** 和 **Codex** 作为标杆
-参照实现，同时提供开放的扩展点，可以接入*任意*其他 agent——CLI 类 agent
-只需写配置即可接入，也可以写一个小的 Python adapter 获得完全控制权。
+agent-arena 是一个开源的 Agent 评测框架，用相同任务、输入、预算和评分规则比较
+不同的编程 Agent 与模型。项目内置 **Claude Code** 和 **Codex** 适配器，也支持
+仅通过配置接入任意 CLI Agent，并提供多 Agent、同模型和多模型三种对比模式。
 
-每次对比评测都会采集三件事：执行过程（工具调用、错误、耗时）、思考过程
-（agent 暴露出来的 thinking 轨迹，如果有的话）、最终产物（分数、代码、
-产物文件）——可以并排比较任意数量的 agent。
-
-这是一个面向大众的开源项目，不局限于 Claude Code 和 Codex —— adapter
-接口的设计目标就是让任意 agent（开源、商业、或研究原型）都能接入。项目
-也会朝着支持更大规模的方向演进：并发运行 N 个 agent、每个任务重复跑多
-轮试验，从而得到统计意义上可靠的评测结果，而不是单次跑分的偶然结果。
+每次尝试都会记录执行事件、Agent 暴露的推理、工具调用轨迹、Token 用量、产物、
+评分和安全观测；启用通信观测后，还会保存模型调用与 MCP 调用的 Wire 证据。多轮
+任务会保留可恢复的对话记录，并给出上下文压缩诊断。
 
 ## 快速开始
 
+需要 Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js/npm，以及至少一个
+位于 `PATH` 中的 Agent CLI（`claude` 或 `codex`）。
+
 ```bash
 uv sync
-cp arena.yaml.example arena.yaml   # 本地单机场景默认配置即可用
+cp arena.yaml.example arena.yaml
 uv run uvicorn backend.main:create_app --factory --port 8100
 
-cd web && npm install && npm run dev
+cd web
+npm install
+npm run dev
 ```
 
-打开前端（默认 `http://127.0.0.1:5173`），选择一个评测环境，勾选已安装
-的 agent（`claude-code`/`codex` 需要在 `PATH` 中），然后运行。
+浏览器打开 `http://127.0.0.1:5173`。后端 API 位于
+`http://127.0.0.1:8100`；`GET /api/selfcheck` 会检查配置、环境加载、
+尝试令牌认证和轨迹写入是否正常。
 
-如果要让 claude-code/codex 走第三方 model provider（见
-`arena.yaml.example` 里的 `model_providers`），启动后端前请确保对应的
-API key 可用：要么把 `api_key_env` 指定的环境变量导出（`cp .env.example
-.env`，填好之后 `source .env`），要么直接把 key 填到 `arena.yaml` 里
-该 provider 的 `api_key` 字段（该文件已 gitignore）。如果某个 run 引用的
-provider 两边都没配置 key，评测会立刻以清晰的 `provider_api_key_missing`
-错误失败，而不是让 CLI 报一个让人摸不着头脑的登录错误。
+如需使用第三方模型服务，在 `arena.yaml` 的 `model_providers` 中配置。API Key
+可放入 `api_key_env` 指定的环境变量（参见 `.env.example`），也可写入已被 Git
+忽略的本地 `arena.yaml`。模型引用格式为 `<provider>/<model>`，例如
+`openrouter/openai/gpt-5`。
 
 ## 内置评测环境
 
-- **order-desk** —— 工具调用类环境：在预算约束下搜索一个模拟图书目录并
-  下单。
-- **cpp-optimizer** —— 纯编程类环境：提交一份 C++17 解答，通过编译并跑
-  隐藏测试用例批量评分。
+| 环境 | 评测重点 | 额外前置 |
+|---|---|---|
+| `order-desk` | MCP 工具调用与预算约束 | 无 |
+| `cpp-optimizer` | C++17 正确性与优化能力 | C++ 编译器 |
+| `ad-placement` | 批量计分的启发式优化 | Linux + C++17 工具链 |
+| `apple-incremental-game` | 长期策略与复利优化 | Python 3 |
+| `edgebench-juliet` | 基于事实的静态漏洞分析 | Python 3 + Bash |
+| `gdpval-prepaid-amortization-db` | 确定性会计信息提取 | Python 3 |
+| `gdpval-prepaid-amortization-official` | 按官方 Rubric 评审 Excel 交付物 | Anthropic 兼容 Judge |
+| `ppt-visual-repair` | 演示文稿可用性与设计审美 | LibreOffice + 多模态 Judge |
+| `context-compaction-benchmark` | 多轮信息保真与压缩可观测性 | 建议使用支持多轮的适配器 |
 
-参见 [docs/environments.md](docs/environments.md) 了解如何新增自己的评测
-环境。
+环境前置检查只告警、不阻断启动，并会在提交前展示。新增或修改环境后运行：
+
+```bash
+uv run python scripts/lint_env.py --all
+```
 
 ## 文档
 
-- [docs/README.md](docs/README.md) —— 完整设计概览
-- [docs/architecture.md](docs/architecture.md) —— 各模块如何协同工作
-- [docs/environments.md](docs/environments.md) —— 如何编写新的评测环境
-- [docs/agents.md](docs/agents.md) —— 如何接入新的 agent
+- [文档总览](docs/README.md)
+- [系统架构](docs/architecture.md)
+- [接入 Agent](docs/agents.md)
+- [开发评测环境](docs/environments.md)
+- [环境前置条件](docs/env-prerequisites.md)
+
+`docs/` 下的文档统一使用中文。`envs/*/materials/` 是评测输入的一部分，可能按
+任务交付语言保留英文。
+
+## 验证
+
+```bash
+uv run pytest
+uv run ruff check backend lane tests scripts
+cd web && npm test && npm run build
+```
 
 ## 许可证
 
-Apache-2.0 —— 见 [LICENSE](LICENSE)。
+Apache-2.0，详见 [LICENSE](LICENSE)。

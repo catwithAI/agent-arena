@@ -1,44 +1,52 @@
-# PPT Human-Taste Alignment
+# PPT 可用性与人类审美对齐
 
-This env evaluates presentation usability and whether an agent's design taste aligns with mature human preferences. The two axes are scored separately so aesthetic quality cannot hide occlusion, cropping, missing content, or broken pages.
+本环境分别评估演示文稿的客观可用性和设计审美，避免较好的视觉观感掩盖遮挡、裁切、
+内容缺失或页面损坏。
 
-The tested agent receives `draft.pptx`. The deck is valid and editable; it contains intentional visual-quality issues rather than file corruption. The required output is:
+Agent 会收到有效且可编辑的 `draft.pptx`。其中故意加入了视觉质量问题，而不是文件
+损坏。必须交付：
 
 - `polished.pptx`
 
-`design_notes.md` is optional and is never required for a high score. The MCP tool `annotate_pptx` can create `draft_annotated.pptx` and `object_manifest.json` as diagnostic aids.
+`design_notes.md` 是可选文件，不影响获得高分。MCP 工具 `annotate_pptx` 可生成
+`draft_annotated.pptx` 和 `object_manifest.json`，帮助诊断对象位置。
 
-The tested agent is explicitly required to render `draft.pptx` to PNG and inspect it visually before editing, then render `polished.pptx` again for a before/after visual check. OOXML, text, or object-property inspection alone does not satisfy the task instructions.
+任务要求 Agent 在编辑前把 `draft.pptx` 渲染为 PNG 并进行视觉检查，编辑后再次
+渲染 `polished.pptx` 做前后对比。只检查 OOXML、文本或对象属性不满足任务要求。
 
-## Evaluation model
+## 评估模型
 
-The hidden human-designed deck is a quality anchor, not a pixel-perfect answer. Multiple visual solutions are valid. The judge compares:
+隐藏的人类设计稿是质量锚点，不是要求像素级复刻的唯一答案。Judge 比较：
 
-1. `REFERENCE`: hidden human design used to calibrate professional quality.
-2. `DRAFT`: the intentionally weak visual draft.
-3. `CANDIDATE`: the agent's polished result.
+1. `REFERENCE`：用于校准专业质量的隐藏人类设计；
+2. `DRAFT`：故意降低视觉质量的草稿；
+3. `CANDIDATE`：Agent 改进后的结果。
 
-The env includes the single-slide material sets `ppt_0003`, `ppt_0005`, and `ppt_0007`. Multi-page source cases are intentionally excluded so the current judge evaluates one complete slide at a time.
+当前包含 `ppt_0003`、`ppt_0005` 和 `ppt_0007` 三组单页材料。暂不纳入多页源文件，
+使现有 Judge 每次评估一张完整幻灯片。
 
-Scoring dimensions:
+评分维度：
 
-- `artifact_contract` (10%): `polished.pptx` exists and is valid OOXML.
-- `office_render` (10%): all three decks render to PNG previews through LibreOffice.
-- `llm_visual_judge` (80%): a multimodal judge scores four usability dimensions and six taste dimensions, including image position/rotation, visual center, left-right density, and functional whitespace. Shrinking text without correcting an unbalanced image placement cannot receive a high composition score or direct acceptance.
+- `artifact_contract`（10%）：`polished.pptx` 存在且是有效 OOXML；
+- `office_render`（10%）：三份文稿都能通过 LibreOffice 渲染为 PNG；
+- `llm_visual_judge`（80%）：多模态 Judge 评估 4 个可用性维度和 6 个审美维度，
+  包括图像位置/旋转、视觉中心、左右密度与功能性留白。
 
-Opening and re-saving the draft does not count as visual improvement. The judge caps submissions with no meaningful visual change, submissions that humans would not prefer over the draft, and submissions that lose content.
+仅打开后重新保存草稿不算视觉改进。没有实质变化、人类不会优先选择，或丢失内容的
+提交都会被限制得分。
 
-The judge calls the Anthropic Messages API directly (multimodal request with
-the three PNG previews attached as image blocks — no external agent session).
-Config is read from `arena.yaml`:
+Judge 直接调用 Anthropic Messages API，把三张 PNG 作为图像块发送，不启动额外
+Agent Session。配置从 `arena.yaml` 读取：
 
 ```yaml
 ppt_visual_repair:
   judge:
-    api_key: ""      # defaults to $ANTHROPIC_API_KEY
-    base_url: ""     # defaults to https://api.anthropic.com/v1/messages
-    model: ""        # defaults to the current Claude model
+    api_key: ""      # 默认读取 ANTHROPIC_API_KEY
+    base_url: ""     # 默认 https://api.anthropic.com/v1/messages
+    model: ""        # 默认使用当前 Claude 模型
     timeout: 300
 ```
 
-Environment variables override YAML: `PPT_JUDGE_API_KEY`, `PPT_JUDGE_BASE_URL`, `PPT_JUDGE_MODEL`, `PPT_JUDGE_TIMEOUT`, or the shared `ANTHROPIC_API_KEY` / `LLM_JUDGE_MODEL`.
+环境变量优先于 YAML：`PPT_JUDGE_API_KEY`、`PPT_JUDGE_BASE_URL`、
+`PPT_JUDGE_MODEL`、`PPT_JUDGE_TIMEOUT`，以及共享的 `ANTHROPIC_API_KEY` /
+`LLM_JUDGE_MODEL`。
