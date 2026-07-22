@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import {
   api,
+  formatApiError,
   type AgentInfo,
   type EnvSummary,
   type OpenRouterModel,
@@ -14,6 +15,11 @@ import {
   missingModalities,
   modalityOptionMark,
 } from "../components/ModalityChips";
+import {
+  AgentCatalogCard,
+  agentCompatibilityWarnings,
+  agentIsAvailable,
+} from "../components/AgentCatalogCard";
 
 /** Multi-model comparison: one agent framework runs the same task once per
  * selected model — controls the variable down to the model layer.
@@ -42,7 +48,7 @@ export function MultiModelSubmit() {
   useEffect(() => {
     api.agents().then((list) => {
       setAgents(list);
-      const first = list.find((a) => a.status === "available");
+      const first = list.find(agentIsAvailable);
       if (first) setAgentName(first.name);
     }).catch((e) => setError(String(e)));
     api.envs().then((list) => {
@@ -83,8 +89,16 @@ export function MultiModelSubmit() {
   // Final refs: prefix each bare id with the picked provider so the agent is
   // routed to the configured endpoint; ids that already carry the prefix
   // stay untouched.
+  const currentEnv = envs.find((e) => e.name === envName);
   const finalRef = (id: string) => (provider && !id.startsWith(`${provider}/`) ? `${provider}/${id}` : id);
   const modelList = [...selectedModels];
+  const selectedAgent = agents.find((agent) => agent.name === agentName);
+  const compatibilityWarnings = selectedAgent
+    ? agentCompatibilityWarnings(selectedAgent, {
+        explicitModel: modelList.length > 0,
+        multiTurn: currentEnv?.multi_turn === true,
+      })
+    : [];
   const canSubmit =
     !!envName && !!agentName && modelList.length >= 2 && !submitting && (!!taskId || !!prompt.trim());
 
@@ -105,13 +119,11 @@ export function MultiModelSubmit() {
       });
       navigate(`/runs/${resp.run_id}`);
     } catch (e) {
-      setError(String(e));
+      setError(formatApiError(e));
     } finally {
       setSubmitting(false);
     }
   }
-
-  const currentEnv = envs.find((e) => e.name === envName);
 
   const filteredModels = (() => {
     const q = orFilter.trim().toLowerCase();
@@ -213,26 +225,17 @@ export function MultiModelSubmit() {
         <div className="channel-body">
           <div className="chan-grid">
             {agents.map((a, i) => {
-              const available = a.status === "available";
               const on = agentName === a.name;
               return (
-                <label
+                <AgentCatalogCard
                   key={a.name}
-                  className={`chan-cell${on ? " on" : ""}${available ? "" : " off-avail"}`}
-                >
-                  <input
-                    type="radio"
-                    name="agent"
-                    checked={on}
-                    disabled={!available}
-                    onChange={() => setAgentName(a.name)}
-                  />
-                  <div className="chan-cell-id">{String(i + 1).padStart(2, "0")}</div>
-                  <div className="chan-cell-name">{a.name}</div>
-                  <div className={`chan-cell-state${available ? "" : " err"}`}>
-                    {available ? "ready" : a.status}
-                  </div>
-                </label>
+                  agent={a}
+                  index={i}
+                  inputType="radio"
+                  inputName="agent"
+                  checked={on}
+                  onChange={() => setAgentName(a.name)}
+                />
               );
             })}
             {agents.length === 0 && <div className="mx-empty">未发现任何 agent</div>}
@@ -368,6 +371,11 @@ export function MultiModelSubmit() {
         </div>
       </div>
 
+      {compatibilityWarnings.length > 0 && (
+        <div className="error-box" role="alert">
+          {compatibilityWarnings.map((warning) => <div key={warning}>{warning}</div>)}
+        </div>
+      )}
       {error && <p className="error-box">{error}</p>}
 
       <div className="submit-row">

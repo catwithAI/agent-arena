@@ -8,6 +8,7 @@ from typing import Any
 
 import aiosqlite
 
+from .agents.registry import AgentRegistry
 from .config import Settings
 from .env_loader import LoadedEnv
 
@@ -18,6 +19,7 @@ class RuntimeState:
     db: aiosqlite.Connection
     db_path: Path
     data_path: Path
+    agent_registry: AgentRegistry
     envs: dict[str, LoadedEnv] = field(default_factory=dict)
     active_tasks: dict[str, list[Any]] = field(default_factory=dict)
 

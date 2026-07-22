@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.routing import APIRouter
 
 from . import runtime_state
+from .agents.registry import AgentRegistry
 from .api import register_routes as register_frontend_routes
 from .config import Settings, load_settings
 from .db import open_db
@@ -41,6 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     `uv run uvicorn backend.main:create_app --factory --port 8100`
     """
     cfg = settings or load_settings()
+    agent_registry = AgentRegistry.from_settings(cfg)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -57,9 +59,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.db_path = db_path
         app.state.data_path = data_path
         app.state.envs = envs
+        app.state.agent_registry = agent_registry
 
         runtime_state.set(
-            RuntimeState(settings=cfg, db=db, db_path=db_path, data_path=data_path, envs=envs)
+            RuntimeState(
+                settings=cfg,
+                db=db,
+                db_path=db_path,
+                data_path=data_path,
+                agent_registry=agent_registry,
+                envs=envs,
+            )
         )
 
         # Wire manifest recovery (backend/wire/recovery.py): only settles
@@ -88,6 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="agent-arena", lifespan=lifespan)
     app.state.settings = cfg
     app.state.envs = {}
+    app.state.agent_registry = agent_registry
 
     api = APIRouter(prefix="/api")
 
@@ -121,7 +132,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 # input_modalities.
                 "agent_modalities": (
                     (env.meta.get("prerequisites") or {}).get("agent_modalities", [])
-                    if isinstance(env.meta.get("prerequisites"), dict) else []
+                    if isinstance(env.meta.get("prerequisites"), dict)
+                    else []
                 ),
             }
             for env in app.state.envs.values()

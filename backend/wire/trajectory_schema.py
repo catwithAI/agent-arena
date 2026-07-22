@@ -34,7 +34,7 @@ from typing import Any
 
 TRAJECTORY_SCHEMA_VERSION = "lane-trajectory-v1"
 
-_VALID_PRODUCERS = frozenset({"claude-code", "codex"})
+_VALID_PRODUCERS = frozenset({"claude-code", "codex", "deerflow"})
 
 
 def _req_str(name: str, value: Any) -> None:

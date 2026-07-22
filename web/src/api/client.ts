@@ -1,25 +1,102 @@
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly payload: unknown,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
+export function formatApiError(error: unknown): string {
+  if (!(error instanceof ApiRequestError)) return String(error);
+  const body = error.payload as {
+    detail?: {
+      code?: string;
+      reports?: Array<{
+        agent_id?: string;
+        issues?: Array<{ message?: string; code?: string }>;
+      }>;
+    } | string;
+  };
+  if (typeof body?.detail === "object" && body.detail?.code === "agent_compatibility_mismatch") {
+    const issues = (body.detail.reports ?? []).flatMap((report) =>
+      (report.issues ?? []).map(
+        (issue) => `${report.agent_id ?? "agent"}: ${issue.message ?? issue.code ?? "incompatible"}`,
+      ),
+    );
+    return issues.length > 0
+      ? `Compatibility check failed — ${issues.join("; ")}`
+      : "Compatibility check failed.";
+  }
+  if (typeof body?.detail === "string") return body.detail;
+  return error.message;
+}
+
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   const init: RequestInit = { method, headers: { "Content-Type": "application/json" } };
   if (body !== undefined) init.body = JSON.stringify(body);
   const resp = await fetch(url, init);
   if (!resp.ok) {
     const text = await resp.text();
-    let detail = text;
+    let payload: unknown = text;
     try {
-      detail = JSON.stringify(JSON.parse(text));
+      payload = JSON.parse(text);
     } catch {
       /* use raw text */
     }
-    throw new Error(`${method} ${url} -> ${resp.status}: ${detail}`);
+    throw new ApiRequestError(`${method} ${url} -> ${resp.status}`, resp.status, payload);
   }
   return resp.json() as Promise<T>;
 }
 
 export type AgentInfo = {
+  id: string;
   name: string;
+  display_name: string;
+  source: "builtin" | "config" | "config-override" | "plugin" | "legacy";
+  transport: "local-cli" | "ssh-cli" | "acp" | "python-sdk" | "remote";
+  availability: {
+    status:
+      | "available"
+      | "not_installed"
+      | "version_unsupported"
+      | "missing_auth"
+      | "missing_dependency"
+      | "misconfigured"
+      | "unknown";
+    version?: string | null;
+    reason?: string | null;
+  };
+  version?: string | null;
   status: "available" | "not_found";
   detail?: string | null;
   cli_path?: string | null;
+  capabilities: Record<
+    string,
+    { state: "verified" | "declared" | "unsupported"; basis?: string | null }
+  >;
+  model_support: {
+    binding: "flag" | "environment" | "config-file" | "agent-default" | "unsupported";
+    protocols?: string[];
+  };
+  metadata: {
+    description?: string | null;
+    installation_url?: string | null;
+    homepage?: string | null;
+    experimental?: boolean;
+    registry_url?: string | null;
+    registry_sha256?: string | null;
+    distribution?: Record<string, unknown> | null;
+    data_boundary?: string | null;
+    remote_endpoint?: string | null;
+    data_residency?: string | null;
+    uploads_source_files?: boolean | null;
+    cancellation_semantics?: string | null;
+  };
+  spec_hash: string;
+  warnings: string[];
 };
 
 export type EnvDimension = {
@@ -156,6 +233,32 @@ export type AttemptDetail = AttemptSummary & {
   // 多轮 conversation 块（summary/turns/evaluation）。历史单轮 attempt
   // 返回 legacy summary + 空 turns。
   conversation?: AttemptConversation;
+};
+
+export type AgentManifestResponse = {
+  status: "available" | "not_available" | "invalid";
+  manifest: null | {
+    status?: string | null;
+    agent: {
+      id?: string;
+      display_name?: string;
+      source?: string;
+      version?: string | null;
+      transport?: string;
+    };
+    model: {
+      requested?: string | null;
+      effective?: string | null;
+      effective_status?: string;
+      provider?: string | null;
+    };
+    config_summary?: Record<string, unknown>;
+    capabilities?: Record<string, { state?: string; basis?: string | null } | string>;
+    coverage: Record<string, unknown>;
+    cleanup: Record<string, unknown>;
+    outcome: Record<string, unknown>;
+    degradations: string[];
+  };
 };
 
 // 五种压缩评测状态（backend.wire.evaluation）。
@@ -340,6 +443,11 @@ export const api = {
   getRun: (runId: string) => req<RunDetail>("GET", `/api/runs/${runId}`),
   getAttempt: (runId: string, attemptId: string) =>
     req<AttemptDetail>("GET", `/api/runs/${runId}/attempts/${attemptId}`),
+  getAgentManifest: (runId: string, attemptId: string) =>
+    req<AgentManifestResponse>(
+      "GET",
+      `/api/runs/${runId}/attempts/${attemptId}/agent-manifest`,
+    ),
   getThinking: (runId: string, attemptId: string) =>
     req<Array<Record<string, unknown>>>("GET", `/api/runs/${runId}/attempts/${attemptId}/thinking`),
   listArtifacts: (runId: string, attemptId: string) =>

@@ -19,12 +19,11 @@
 ## 快速开始
 
 ```bash
-uv sync
-cp arena.yaml.example arena.yaml   # 本地单机场景默认配置即可用
-uv run uvicorn backend.main:create_app --factory --port 8100
-
-cd web && npm install && npm run dev
+./start.sh
 ```
+
+脚本会在首次运行时创建 gitignored 的 `arena.yaml` 并安装缺失依赖。端口覆盖以及仅启动
+后端/前端的参数见 `./start.sh --help`。
 
 打开前端（默认 `http://127.0.0.1:5173`），选择一个评测环境，勾选已安装
 的 agent（`claude-code`/`codex` 需要在 `PATH` 中），然后运行。

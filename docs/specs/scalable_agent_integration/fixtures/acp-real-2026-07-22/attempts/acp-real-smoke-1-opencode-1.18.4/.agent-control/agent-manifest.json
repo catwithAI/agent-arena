@@ -1,0 +1,242 @@
+{
+  "agent": {
+    "display_name": "OpenCode",
+    "id": "acp:opencode@1.18.4",
+    "source": "config",
+    "spec_hash": "sha256:51be7777f5963f63ff9958051b79f98812dc31024ce7c79af0174f69134a567a",
+    "transport": "acp",
+    "version": "1.18.4"
+  },
+  "attempt_id": "acp-real-smoke-1-opencode-1.18.4",
+  "capabilities": {
+    "answer_interaction": {
+      "basis": null,
+      "state": "declared"
+    },
+    "mcp": {
+      "basis": null,
+      "state": "verified"
+    },
+    "resume_send_message": {
+      "basis": null,
+      "state": "verified"
+    },
+    "single_turn": {
+      "basis": null,
+      "state": "verified"
+    },
+    "structured_events": {
+      "basis": null,
+      "state": "verified"
+    },
+    "subagent_identity": {
+      "basis": null,
+      "state": "unsupported"
+    },
+    "thinking": {
+      "basis": null,
+      "state": "verified"
+    },
+    "token_usage": {
+      "basis": null,
+      "state": "declared"
+    },
+    "tools": {
+      "basis": null,
+      "state": "verified"
+    },
+    "wire": {
+      "basis": null,
+      "state": "unsupported"
+    }
+  },
+  "cleanup": {
+    "status": "confirmed"
+  },
+  "components": {
+    "driver": "acp-session@1",
+    "parser": "acp-v1@1",
+    "transport": "acp-v1@1"
+  },
+  "config_summary": {
+    "data_boundary": "local subprocess; agent network access is implementation-defined",
+    "distribution": {
+      "binary": {
+        "darwin-aarch64": {
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-darwin-arm64.zip",
+          "args": [
+            "acp"
+          ],
+          "cmd": "./opencode",
+          "env": {},
+          "sha256": "04fb881b632b323c712dfda6dcbbc6fce736394f07ba76176e52d6665925d4e6"
+        },
+        "darwin-x86_64": {
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-darwin-x64.zip",
+          "args": [
+            "acp"
+          ],
+          "cmd": "./opencode",
+          "env": {},
+          "sha256": "e177c532654572079981db1dce464a78adbaed9654a142848b2e81beb8c9f5c6"
+        },
+        "linux-aarch64": {
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-linux-arm64.tar.gz",
+          "args": [
+            "acp"
+          ],
+          "cmd": "./opencode",
+          "env": {},
+          "sha256": "eba87efba3976d533a24cca0316f8ef375b5f8e797c0a95c25ee919700b7ba35"
+        },
+        "linux-x86_64": {
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-linux-x64.tar.gz",
+          "args": [
+            "acp"
+          ],
+          "cmd": "./opencode",
+          "env": {},
+          "sha256": "bab463c3fb3224d388bb7cfad63f38703df9cf0be2cfd2ce8cb49d886b53a174"
+        },
+        "windows-aarch64": {
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-windows-arm64.zip",
+          "args": [
+            "acp"
+          ],
+          "cmd": "./opencode",
+          "env": {},
+          "sha256": "4b4d2b48afdf1432a697bccabe230c3d614cf8ed34f5bc0acf9ffd89bb9cfb25"
+        },
+        "windows-x86_64": {
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-windows-x64.zip",
+          "args": [
+            "acp"
+          ],
+          "cmd": "./opencode.exe",
+          "env": {},
+          "sha256": "814dae5724dfa396a43b6408703d0929625483e2fac135623f10f0fa8db04a96"
+        }
+      },
+      "npx": null,
+      "uvx": null
+    },
+    "prompt_hash": "sha256:3602652b74a356d376875e185df762acb5f8fc245e16d3e0b70eee6b43b56642",
+    "registry_entry": {
+      "authors": [
+        "Anomaly"
+      ],
+      "description": "The open source coding agent",
+      "distribution": {
+        "binary": {
+          "darwin-aarch64": {
+            "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-darwin-arm64.zip",
+            "args": [
+              "acp"
+            ],
+            "cmd": "./opencode",
+            "env": {},
+            "sha256": "04fb881b632b323c712dfda6dcbbc6fce736394f07ba76176e52d6665925d4e6"
+          },
+          "darwin-x86_64": {
+            "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-darwin-x64.zip",
+            "args": [
+              "acp"
+            ],
+            "cmd": "./opencode",
+            "env": {},
+            "sha256": "e177c532654572079981db1dce464a78adbaed9654a142848b2e81beb8c9f5c6"
+          },
+          "linux-aarch64": {
+            "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-linux-arm64.tar.gz",
+            "args": [
+              "acp"
+            ],
+            "cmd": "./opencode",
+            "env": {},
+            "sha256": "eba87efba3976d533a24cca0316f8ef375b5f8e797c0a95c25ee919700b7ba35"
+          },
+          "linux-x86_64": {
+            "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-linux-x64.tar.gz",
+            "args": [
+              "acp"
+            ],
+            "cmd": "./opencode",
+            "env": {},
+            "sha256": "bab463c3fb3224d388bb7cfad63f38703df9cf0be2cfd2ce8cb49d886b53a174"
+          },
+          "windows-aarch64": {
+            "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-windows-arm64.zip",
+            "args": [
+              "acp"
+            ],
+            "cmd": "./opencode",
+            "env": {},
+            "sha256": "4b4d2b48afdf1432a697bccabe230c3d614cf8ed34f5bc0acf9ffd89bb9cfb25"
+          },
+          "windows-x86_64": {
+            "archive": "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-windows-x64.zip",
+            "args": [
+              "acp"
+            ],
+            "cmd": "./opencode.exe",
+            "env": {},
+            "sha256": "814dae5724dfa396a43b6408703d0929625483e2fac135623f10f0fa8db04a96"
+          }
+        },
+        "npx": null,
+        "uvx": null
+      },
+      "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/opencode.svg",
+      "id": "opencode",
+      "license": "MIT",
+      "name": "OpenCode",
+      "repository": "https://github.com/anomalyco/opencode",
+      "version": "1.18.4",
+      "website": "https://opencode.ai"
+    },
+    "registry_sha256": "sha256:799d71d53cbf5af4d9a0b38a68a402f8e135f6dd0002f58eaf6a184cbbaa03d1",
+    "registry_url": "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json"
+  },
+  "coverage": {
+    "permission": "verified",
+    "thinking": "verified",
+    "token_usage": "partial",
+    "tools": "verified",
+    "trajectory": "verified"
+  },
+  "degradations": [],
+  "launch": {
+    "argv_redacted": [
+      "<agent_executable>",
+      "acp",
+      "--pure"
+    ],
+    "cwd": "driver-owned",
+    "env_names": [
+      "OPENCODE_CONFIG_CONTENT"
+    ],
+    "env_redacted": {
+      "OPENCODE_CONFIG_CONTENT": "***"
+    },
+    "plan_hash": "sha256:05270ed86157ed0fc67473d63da170be1585a37b27d2511474b9ed3b02981e30",
+    "prompt_mode": "driver-owned"
+  },
+  "model": {
+    "effective": null,
+    "effective_status": "unknown",
+    "provider": null,
+    "request_mode": "unspecified",
+    "requested": null
+  },
+  "outcome": {
+    "error_code": null,
+    "status": "completed"
+  },
+  "schema_version": "1",
+  "sessions": [
+    {
+      "session_id": "ses_0780a97e8ffeAgLv7sA2KIb4mS"
+    }
+  ],
+  "status": "final"
+}

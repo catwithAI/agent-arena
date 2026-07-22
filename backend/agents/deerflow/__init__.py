@@ -1,0 +1,13 @@
+"""Pinned DeerFlow v2 integration."""
+
+DEERFLOW_PACKAGE = "deerflow-harness"
+DEERFLOW_VERSION = "2.0.0"
+DEERFLOW_REVISION = "7e7f0410797693cf882594555ba414e0361d4c6f"
+RUNNER_VERSION = "1"
+
+__all__ = [
+    "DEERFLOW_PACKAGE",
+    "DEERFLOW_REVISION",
+    "DEERFLOW_VERSION",
+    "RUNNER_VERSION",
+]

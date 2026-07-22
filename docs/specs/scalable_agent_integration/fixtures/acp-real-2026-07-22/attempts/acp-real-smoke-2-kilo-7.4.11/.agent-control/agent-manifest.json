@@ -1,0 +1,236 @@
+{
+  "agent": {
+    "display_name": "Kilo",
+    "id": "acp:kilo@7.4.11",
+    "source": "config",
+    "spec_hash": "sha256:2f262024361460e048f56e5bc9b1779f7cc965df5fd6af220c2977c5ac2f1e42",
+    "transport": "acp",
+    "version": "7.4.11"
+  },
+  "attempt_id": "acp-real-smoke-2-kilo-7.4.11",
+  "capabilities": {
+    "answer_interaction": {
+      "basis": null,
+      "state": "declared"
+    },
+    "mcp": {
+      "basis": null,
+      "state": "verified"
+    },
+    "resume_send_message": {
+      "basis": null,
+      "state": "verified"
+    },
+    "single_turn": {
+      "basis": null,
+      "state": "verified"
+    },
+    "structured_events": {
+      "basis": null,
+      "state": "verified"
+    },
+    "subagent_identity": {
+      "basis": null,
+      "state": "unsupported"
+    },
+    "thinking": {
+      "basis": null,
+      "state": "verified"
+    },
+    "token_usage": {
+      "basis": null,
+      "state": "declared"
+    },
+    "tools": {
+      "basis": null,
+      "state": "verified"
+    },
+    "wire": {
+      "basis": null,
+      "state": "unsupported"
+    }
+  },
+  "cleanup": {
+    "status": "confirmed"
+  },
+  "components": {
+    "driver": "acp-session@1",
+    "parser": "acp-v1@1",
+    "transport": "acp-v1@1"
+  },
+  "config_summary": {
+    "data_boundary": "local subprocess; agent network access is implementation-defined",
+    "distribution": {
+      "binary": {
+        "darwin-aarch64": {
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.4.11/kilo-darwin-arm64.zip",
+          "args": [
+            "acp"
+          ],
+          "cmd": "./kilo",
+          "env": {},
+          "sha256": "14a030a354f3b51f0241662627702e7b06cddf3fcb6e0f1415279e9d3a3b8998"
+        },
+        "darwin-x86_64": {
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.4.11/kilo-darwin-x64.zip",
+          "args": [
+            "acp"
+          ],
+          "cmd": "./kilo",
+          "env": {},
+          "sha256": "66e302e09b96fd9794012bdb608622b589e4810ba31eca35918d8acd1a32a438"
+        },
+        "linux-aarch64": {
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.4.11/kilo-linux-arm64.tar.gz",
+          "args": [
+            "acp"
+          ],
+          "cmd": "./kilo",
+          "env": {},
+          "sha256": "48c5405eb05efb3558d120b521d1a2b097cd8e99d36d7caf015e7c467922793c"
+        },
+        "linux-x86_64": {
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.4.11/kilo-linux-x64.tar.gz",
+          "args": [
+            "acp"
+          ],
+          "cmd": "./kilo",
+          "env": {},
+          "sha256": "b060dd4e094b0f9966de03d8a0d0d5cc8e6bb23ab04f1d04b7e3951d13079770"
+        },
+        "windows-x86_64": {
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.4.11/kilo-windows-x64.zip",
+          "args": [
+            "acp"
+          ],
+          "cmd": "./kilo.exe",
+          "env": {},
+          "sha256": "1c04d25b1484526b1eb8abe44bbcfc179fb71b1efa88b0164cd5709ca8bb00e7"
+        }
+      },
+      "npx": {
+        "args": [
+          "acp"
+        ],
+        "env": {},
+        "package": "@kilocode/cli@7.4.11"
+      },
+      "uvx": null
+    },
+    "prompt_hash": "sha256:3602652b74a356d376875e185df762acb5f8fc245e16d3e0b70eee6b43b56642",
+    "registry_entry": {
+      "authors": [
+        "Kilo Code"
+      ],
+      "description": "The open source coding agent",
+      "distribution": {
+        "binary": {
+          "darwin-aarch64": {
+            "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.4.11/kilo-darwin-arm64.zip",
+            "args": [
+              "acp"
+            ],
+            "cmd": "./kilo",
+            "env": {},
+            "sha256": "14a030a354f3b51f0241662627702e7b06cddf3fcb6e0f1415279e9d3a3b8998"
+          },
+          "darwin-x86_64": {
+            "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.4.11/kilo-darwin-x64.zip",
+            "args": [
+              "acp"
+            ],
+            "cmd": "./kilo",
+            "env": {},
+            "sha256": "66e302e09b96fd9794012bdb608622b589e4810ba31eca35918d8acd1a32a438"
+          },
+          "linux-aarch64": {
+            "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.4.11/kilo-linux-arm64.tar.gz",
+            "args": [
+              "acp"
+            ],
+            "cmd": "./kilo",
+            "env": {},
+            "sha256": "48c5405eb05efb3558d120b521d1a2b097cd8e99d36d7caf015e7c467922793c"
+          },
+          "linux-x86_64": {
+            "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.4.11/kilo-linux-x64.tar.gz",
+            "args": [
+              "acp"
+            ],
+            "cmd": "./kilo",
+            "env": {},
+            "sha256": "b060dd4e094b0f9966de03d8a0d0d5cc8e6bb23ab04f1d04b7e3951d13079770"
+          },
+          "windows-x86_64": {
+            "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.4.11/kilo-windows-x64.zip",
+            "args": [
+              "acp"
+            ],
+            "cmd": "./kilo.exe",
+            "env": {},
+            "sha256": "1c04d25b1484526b1eb8abe44bbcfc179fb71b1efa88b0164cd5709ca8bb00e7"
+          }
+        },
+        "npx": {
+          "args": [
+            "acp"
+          ],
+          "env": {},
+          "package": "@kilocode/cli@7.4.11"
+        },
+        "uvx": null
+      },
+      "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/kilo.svg",
+      "id": "kilo",
+      "license": "MIT",
+      "name": "Kilo",
+      "repository": "https://github.com/Kilo-Org/kilocode",
+      "version": "7.4.11",
+      "website": "https://kilo.ai/"
+    },
+    "registry_sha256": "sha256:799d71d53cbf5af4d9a0b38a68a402f8e135f6dd0002f58eaf6a184cbbaa03d1",
+    "registry_url": "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json"
+  },
+  "coverage": {
+    "permission": "verified",
+    "thinking": "unknown",
+    "token_usage": "partial",
+    "tools": "verified",
+    "trajectory": "verified"
+  },
+  "degradations": [],
+  "launch": {
+    "argv_redacted": [
+      "<agent_executable>",
+      "acp",
+      "--pure"
+    ],
+    "cwd": "driver-owned",
+    "env_names": [
+      "KILO_CONFIG_CONTENT"
+    ],
+    "env_redacted": {
+      "KILO_CONFIG_CONTENT": "***"
+    },
+    "plan_hash": "sha256:3ca43f96674eae2e64e86ae2cfe1d3ea1cba1d9eee8da181f0940f8557f54527",
+    "prompt_mode": "driver-owned"
+  },
+  "model": {
+    "effective": null,
+    "effective_status": "unknown",
+    "provider": null,
+    "request_mode": "unspecified",
+    "requested": null
+  },
+  "outcome": {
+    "error_code": null,
+    "status": "completed"
+  },
+  "schema_version": "1",
+  "sessions": [
+    {
+      "session_id": "ses_0780a8009ffet93v6YkQWANdIA"
+    }
+  ],
+  "status": "final"
+}
