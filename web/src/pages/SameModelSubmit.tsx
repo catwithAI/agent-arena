@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import {
   api,
+  formatApiError,
   type AgentInfo,
   type EnvSummary,
   type OpenRouterModel,
@@ -14,6 +15,11 @@ import {
   missingModalities,
   modalityOptionMark,
 } from "../components/ModalityChips";
+import {
+  AgentCatalogCard,
+  agentCompatibilityWarnings,
+  agentIsAvailable,
+} from "../components/AgentCatalogCard";
 
 /** Same-model comparison: N distinct agents all run one shared model.
  * The final model ref is `<provider>/<bare>` when a provider is picked
@@ -45,7 +51,7 @@ export function SameModelSubmit() {
     api.agents().then((list) => {
       setAgents(list);
       // Preselect every available agent: same-model needs >= 2 anyway.
-      setSelected(new Set(list.filter((a) => a.status === "available").map((a) => a.name)));
+      setSelected(new Set(list.filter(agentIsAvailable).map((a) => a.name)));
     }).catch((e) => setError(String(e)));
     api.envs().then((list) => {
       setEnvs(list);
@@ -76,6 +82,7 @@ export function SameModelSubmit() {
     });
   }
 
+  const currentEnv = envs.find((e) => e.name === envName);
   const selectedList = agents.map((a) => a.name).filter((n) => selected.has(n));
   const modelRef = (() => {
     const bare = bareModel.trim();
@@ -84,6 +91,14 @@ export function SameModelSubmit() {
   })();
   const canSubmit =
     !!envName && selectedList.length >= 2 && !!modelRef && !submitting && (!!taskId || !!prompt.trim());
+  const compatibilityWarnings = agents
+    .filter((agent) => selected.has(agent.name))
+    .flatMap((agent) =>
+      agentCompatibilityWarnings(agent, {
+        explicitModel: modelRef.length > 0,
+        multiTurn: currentEnv?.multi_turn === true,
+      }),
+    );
 
   async function onSubmit() {
     setError(null);
@@ -103,13 +118,12 @@ export function SameModelSubmit() {
       });
       navigate(`/runs/${resp.run_id}`);
     } catch (e) {
-      setError(String(e));
+      setError(formatApiError(e));
     } finally {
       setSubmitting(false);
     }
   }
 
-  const currentEnv = envs.find((e) => e.name === envName);
   const pickedModel = orModels.find((m) => m.id === bareModel.trim());
   const missing = missingModalities(currentEnv?.agent_modalities, pickedModel?.input_modalities);
 
@@ -209,25 +223,16 @@ export function SameModelSubmit() {
         <div className="channel-body">
           <div className="chan-grid">
             {agents.map((a, i) => {
-              const available = a.status === "available";
               const on = selected.has(a.name);
               return (
-                <label
+                <AgentCatalogCard
                   key={a.name}
-                  className={`chan-cell${on ? " on" : ""}${available ? "" : " off-avail"}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    disabled={!available}
-                    onChange={() => toggleAgent(a.name)}
-                  />
-                  <div className="chan-cell-id">{String(i + 1).padStart(2, "0")}</div>
-                  <div className="chan-cell-name">{a.name}</div>
-                  <div className={`chan-cell-state${available ? "" : " err"}`}>
-                    {available ? "ready" : a.status}
-                  </div>
-                </label>
+                  agent={a}
+                  index={i}
+                  inputType="checkbox"
+                  checked={on}
+                  onChange={() => toggleAgent(a.name)}
+                />
               );
             })}
             {agents.length === 0 && <div className="mx-empty">未发现任何 agent</div>}
@@ -412,6 +417,11 @@ export function SameModelSubmit() {
         </div>
       </div>
 
+      {compatibilityWarnings.length > 0 && (
+        <div className="error-box" role="alert">
+          {compatibilityWarnings.map((warning) => <div key={warning}>{warning}</div>)}
+        </div>
+      )}
       {error && <p className="error-box">{error}</p>}
 
       <div className="submit-row">

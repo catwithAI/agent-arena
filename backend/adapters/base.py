@@ -101,6 +101,7 @@ class McpServerSpec:
     command: str
     args: tuple[str, ...] = ()
     cwd: str | None = None
+    env: dict[str, str] = field(default_factory=dict)
 
 
 # ---------- Conversation turns (multi-turn attempts) ----------

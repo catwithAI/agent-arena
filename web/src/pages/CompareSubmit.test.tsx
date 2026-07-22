@@ -47,6 +47,7 @@ vi.mock("../api/client", async (orig) => {
 
 import { SameModelSubmit } from "./SameModelSubmit";
 import { MultiModelSubmit } from "./MultiModelSubmit";
+import { ApiRequestError } from "../api/client";
 
 afterEach(() => {
   cleanup();
@@ -60,7 +61,9 @@ describe("SameModelSubmit", () => {
 
     fireEvent.change(screen.getByLabelText(/模型 ID/), { target: { value: "z-ai/glm-5.2" } });
     fireEvent.click(screen.getByRole("radio", { name: /^full$/ }));
-    fireEvent.click(screen.getByRole("button", { name: /运行同模型对比/ }));
+    const submit = screen.getByRole("button", { name: /运行同模型对比/ });
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
 
     await waitFor(() => expect(createRunMock).toHaveBeenCalled());
     const body = (createRunMock.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
@@ -77,6 +80,36 @@ describe("SameModelSubmit", () => {
     fireEvent.change(screen.getByLabelText(/模型 ID/), { target: { value: "z-ai/glm-5.2" } });
     // env requires image input; the picked model is text-only.
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/image/));
+  });
+
+  it("renders structured compatibility rejection with the specific agent", async () => {
+    createRunMock.mockRejectedValueOnce(
+      new ApiRequestError("POST /api/runs -> 400", 400, {
+        detail: {
+          code: "agent_compatibility_mismatch",
+          reports: [
+            {
+              agent_id: "codex",
+              issues: [
+                { code: "agent_model_unsupported", message: "requested model is unsupported" },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    render(<MemoryRouter><SameModelSubmit /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText(/通信采集档/)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/模型 ID/), { target: { value: "shared-model" } });
+    const submit = screen.getByRole("button", { name: /运行同模型对比/ });
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
+
+    await waitFor(() =>
+      expect(screen.getByText(/Compatibility check failed/)).toHaveTextContent(
+        /codex: requested model is unsupported/,
+      ),
+    );
   });
 });
 

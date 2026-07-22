@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
-import { api, type ArtifactStep, type AttemptDetail, type AttemptSummary, type RunDetail as RunDetailModel } from "../api/client";
+import { api, type AgentManifestResponse, type ArtifactStep, type AttemptDetail, type AttemptSummary, type RunDetail as RunDetailModel, type WireManifest } from "../api/client";
 import { WirePanel } from "../wire/WirePanel";
 import { ArtifactsPanel } from "../artifacts/ArtifactsPanel";
 import { ConversationPanel } from "./ConversationPanel";
@@ -149,12 +149,13 @@ function Transcript({ events }: { events: Array<Record<string, unknown>> }) {
 
 // ── shared attempt helpers ──
 
-type TabKey = "transcript" | "turns" | "scores" | "artifacts" | "wire";
+type TabKey = "transcript" | "turns" | "scores" | "agent" | "artifacts" | "wire";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "transcript", label: "对话记录" },
   { key: "turns", label: "对话轮次" },
   { key: "scores", label: "评分" },
+  { key: "agent", label: "Agent 配置" },
   { key: "artifacts", label: "产物" },
   { key: "wire", label: "通信详情" },
 ];
@@ -180,10 +181,18 @@ function fmtCost(cost: number | null | undefined): string | null {
 function useAttemptDetail(runId: string, attempt: AttemptSummary) {
   const [detail, setDetail] = useState<AttemptDetail | null>(null);
   const [artifacts, setArtifacts] = useState<ArtifactStep[]>([]);
+  const [manifest, setManifest] = useState<AgentManifestResponse | null>(null);
+  const [wireManifest, setWireManifest] = useState<WireManifest | null>(null);
 
   const load = useCallback(() => {
     api.getAttempt(runId, attempt.id).then(setDetail);
     api.listArtifacts(runId, attempt.id).then(setArtifacts).catch(() => setArtifacts([]));
+    api.getAgentManifest(runId, attempt.id).then(setManifest).catch(() =>
+      setManifest({ status: "not_available", manifest: null }),
+    );
+    api.getWireManifest(runId, attempt.id).then(setWireManifest).catch(() =>
+      setWireManifest({ status: "not_available" }),
+    );
   }, [runId, attempt.id]);
 
   useEffect(() => {
@@ -193,7 +202,84 @@ function useAttemptDetail(runId: string, attempt: AttemptSummary) {
     return () => clearInterval(iv);
   }, [load, attempt.status]);
 
-  return { detail, artifacts };
+  return { detail, artifacts, manifest, wireManifest };
+}
+
+type CoverageLevel = "verified" | "partial" | "aggregate-only" | "unsupported" | "unknown";
+
+function capabilityState(
+  manifest: AgentManifestResponse["manifest"],
+  name: string,
+): string | undefined {
+  const value = manifest?.capabilities?.[name];
+  return typeof value === "string" ? value : value?.state;
+}
+
+function coverageRows(
+  manifest: AgentManifestResponse["manifest"],
+  wire: WireManifest | null,
+): Array<{ name: string; level: CoverageLevel; detail: string }> {
+  const config = manifest?.config_summary ?? {};
+  const native = wire?.sources?.find((source) => source.kind === "native-event");
+  const nativeCaps = native?.capabilities ?? {};
+  const parserCoverage = manifest?.coverage ?? {};
+  const wireUnsupported = capabilityState(manifest, "wire") === "unsupported";
+  const mcpState = capabilityState(manifest, "mcp");
+  const tokenCoverage = String(parserCoverage.token_usage ?? "unknown");
+  const structuredCoverage = String(parserCoverage.structured_events ?? "unknown");
+  return [
+    {
+      name: "Prompt",
+      level: typeof config.prompt_hash === "string" ? "verified" : "unknown",
+      detail: typeof config.prompt_hash === "string" ? "semantic hash recorded" : "hash unavailable",
+    },
+    {
+      name: "Model",
+      level: manifest?.model.effective_status === "confirmed" ? "verified" : manifest?.model.requested ? "partial" : "unknown",
+      detail: manifest?.model.effective ?? manifest?.model.requested ?? "effective model unknown",
+    },
+    {
+      name: "MCP",
+      level: mcpState === "unsupported" ? "unsupported" : Array.isArray(config.mcp) ? "verified" : "unknown",
+      detail: mcpState === "unsupported" ? "preflight rejects MCP tasks" : Array.isArray(config.mcp) ? `${config.mcp.length} server(s) recorded` : "coverage unavailable",
+    },
+    {
+      name: "Trajectory",
+      level: nativeCaps.trajectory ? "verified" : structuredCoverage === "verified" ? "partial" : "unknown",
+      detail: nativeCaps.subagent_identity === false ? "main/tool steps; child identity unavailable" : nativeCaps.trajectory ? String(nativeCaps.trajectory) : structuredCoverage,
+    },
+    {
+      name: "Tokens",
+      level: nativeCaps.call_boundary === "aggregate-only" ? "aggregate-only" : tokenCoverage === "verified" ? "verified" : tokenCoverage === "unsupported" ? "unsupported" : "unknown",
+      detail: nativeCaps.call_boundary === "aggregate-only" ? "attempt totals; no logical call boundary" : tokenCoverage,
+    },
+    {
+      name: "Wire",
+      level: wire?.status === "complete" ? (nativeCaps.call_boundary === "aggregate-only" ? "aggregate-only" : "verified") : wireUnsupported ? "unsupported" : wire?.status === "partial" ? "partial" : "unknown",
+      detail: wire?.status ?? (wireUnsupported ? "unsupported by agent" : "manifest unavailable"),
+    },
+  ];
+}
+
+export function CoverageMatrix({
+  manifest,
+  wireManifest,
+}: {
+  manifest: AgentManifestResponse["manifest"];
+  wireManifest: WireManifest | null;
+}) {
+  const rows = coverageRows(manifest, wireManifest);
+  return (
+    <div className="coverage-matrix" aria-label="coverage matrix">
+      {rows.map((row) => (
+        <div className="coverage-row" key={row.name}>
+          <b>{row.name}</b>
+          <span className={`coverage-level ${row.level}`} data-coverage={row.level}>{row.level}</span>
+          <small>{row.detail}</small>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function dotClass(attempt: AttemptSummary, leader: boolean): string {
@@ -209,12 +295,16 @@ function AttemptTabBody({
   tab,
   detail,
   artifacts,
+  manifest,
+  wireManifest,
 }: {
   runId: string;
   attempt: AttemptSummary;
   tab: TabKey;
   detail: AttemptDetail | null;
   artifacts: ArtifactStep[];
+  manifest: AgentManifestResponse | null;
+  wireManifest: WireManifest | null;
 }) {
   if (tab === "transcript") {
     if (!detail) return <p className="muted">加载中…</p>;
@@ -247,6 +337,30 @@ function AttemptTabBody({
     if (artifacts.length === 0 && isActive(attempt.status))
       return <div className="mx-empty">尚未导出产物，agent 仍在执行中</div>;
     return <ArtifactsPanel runId={runId} attemptId={attempt.id} steps={artifacts} />;
+  }
+  if (tab === "agent") {
+    if (!manifest) return <p className="muted">加载中…</p>;
+    if (!manifest.manifest) {
+      return <p className="muted">Agent manifest {manifest.status}（历史 attempt 可能没有该数据）。</p>;
+    }
+    const data = manifest.manifest;
+    return (
+      <div className="agent-manifest-panel">
+        <div><b>Agent</b> {data.agent.display_name ?? data.agent.id ?? "—"}</div>
+        <div><b>version</b> {data.agent.version ?? "unknown"}</div>
+        <div><b>source</b> {data.agent.source ?? "unknown"} · {data.agent.transport ?? "unknown"}</div>
+        <div><b>requested model</b> {data.model.requested ?? "unspecified"}</div>
+        <div><b>effective model</b> {data.model.effective ?? data.model.effective_status ?? "unknown"}</div>
+        <CoverageMatrix manifest={data} wireManifest={wireManifest} />
+        <div className="agent-manifest-coverage">
+          {Object.entries(data.coverage).map(([name, value]) => (
+            <span key={name}>{name}: {String(value)}</span>
+          ))}
+          {Object.keys(data.coverage).length === 0 && <span>coverage unavailable</span>}
+        </div>
+        {data.degradations.map((value) => <div className="agent-manifest-degradation" key={value}>⚠ {value}</div>)}
+      </div>
+    );
   }
   return <WirePanel runId={runId} attemptId={attempt.id} label={attempt.agent_name} />;
 }
@@ -296,7 +410,7 @@ function AttemptRack({
   label?: string;
 }) {
   const [tab, setTab] = useState<TabKey>("transcript");
-  const { detail, artifacts } = useAttemptDetail(runId, attempt);
+  const { detail, artifacts, manifest, wireManifest } = useAttemptDetail(runId, attempt);
 
   return (
     <div className={`rack${leader ? " leader" : ""}`}>
@@ -322,7 +436,7 @@ function AttemptRack({
         ))}
       </div>
       <div className="rack-body">
-        <AttemptTabBody runId={runId} attempt={attempt} tab={tab} detail={detail} artifacts={artifacts} />
+        <AttemptTabBody runId={runId} attempt={attempt} tab={tab} detail={detail} artifacts={artifacts} manifest={manifest} wireManifest={wireManifest} />
       </div>
     </div>
   );
@@ -345,7 +459,7 @@ function MatrixCell({
   tab: TabKey;
   label?: string;
 }) {
-  const { detail, artifacts } = useAttemptDetail(runId, attempt);
+  const { detail, artifacts, manifest, wireManifest } = useAttemptDetail(runId, attempt);
 
   return (
     <div className={`mx-cell${leader ? " leader" : ""}`}>
@@ -361,7 +475,7 @@ function MatrixCell({
       <div className="mx-stats">{attemptStatLine(attempt, detail)}</div>
       <div className="mx-body">
         {attempt.error_message && <div className="error-box">{attempt.error_message}</div>}
-        <AttemptTabBody runId={runId} attempt={attempt} tab={tab} detail={detail} artifacts={artifacts} />
+        <AttemptTabBody runId={runId} attempt={attempt} tab={tab} detail={detail} artifacts={artifacts} manifest={manifest} wireManifest={wireManifest} />
       </div>
     </div>
   );

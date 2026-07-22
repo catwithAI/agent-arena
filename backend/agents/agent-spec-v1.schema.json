@@ -1,0 +1,1067 @@
+{
+  "$defs": {
+    "AgentMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "cancellation_semantics": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cancellation Semantics"
+        },
+        "data_boundary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Data Boundary"
+        },
+        "data_residency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Data Residency"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "distribution": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Distribution"
+        },
+        "experimental": {
+          "default": false,
+          "title": "Experimental",
+          "type": "boolean"
+        },
+        "homepage": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Homepage"
+        },
+        "installation_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Installation Url"
+        },
+        "license": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License"
+        },
+        "maintainer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maintainer"
+        },
+        "package_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Package Name"
+        },
+        "package_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Package Version"
+        },
+        "registry_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Registry Sha256"
+        },
+        "registry_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Registry Url"
+        },
+        "remote_endpoint": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remote Endpoint"
+        },
+        "repository": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision"
+        },
+        "supported_platforms": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Supported Platforms",
+          "type": "array"
+        },
+        "uploads_source_files": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Uploads Source Files"
+        }
+      },
+      "title": "AgentMetadata",
+      "type": "object"
+    },
+    "AgentOptionSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "default": null,
+          "title": "Default"
+        },
+        "sensitive": {
+          "default": false,
+          "title": "Sensitive",
+          "type": "boolean"
+        },
+        "type": {
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "AgentOptionSpec",
+      "type": "object"
+    },
+    "AvailabilityProbeSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "configured_available": {
+          "default": false,
+          "title": "Configured Available",
+          "type": "boolean"
+        },
+        "executable": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Executable"
+        },
+        "system_dependencies": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "System Dependencies",
+          "type": "array"
+        },
+        "timeout_seconds": {
+          "default": 2.0,
+          "exclusiveMinimum": 0,
+          "maximum": 30,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "version_command": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Version Command",
+          "type": "array"
+        },
+        "version_constraint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Constraint"
+        },
+        "version_regex": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Regex"
+        },
+        "version_scheme": {
+          "default": "pep440",
+          "enum": [
+            "pep440",
+            "semver",
+            "regex"
+          ],
+          "title": "Version Scheme",
+          "type": "string"
+        }
+      },
+      "title": "AvailabilityProbeSpec",
+      "type": "object"
+    },
+    "CapabilitySpec": {
+      "additionalProperties": false,
+      "properties": {
+        "answer_interaction": {
+          "$ref": "#/$defs/CapabilityValue"
+        },
+        "mcp": {
+          "$ref": "#/$defs/CapabilityValue"
+        },
+        "resume_send_message": {
+          "$ref": "#/$defs/CapabilityValue"
+        },
+        "single_turn": {
+          "$ref": "#/$defs/CapabilityValue"
+        },
+        "structured_events": {
+          "$ref": "#/$defs/CapabilityValue"
+        },
+        "subagent_identity": {
+          "$ref": "#/$defs/CapabilityValue"
+        },
+        "thinking": {
+          "$ref": "#/$defs/CapabilityValue"
+        },
+        "token_usage": {
+          "$ref": "#/$defs/CapabilityValue"
+        },
+        "tools": {
+          "$ref": "#/$defs/CapabilityValue"
+        },
+        "wire": {
+          "$ref": "#/$defs/CapabilityValue"
+        }
+      },
+      "title": "CapabilitySpec",
+      "type": "object"
+    },
+    "CapabilityValue": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Basis"
+        },
+        "state": {
+          "default": "unsupported",
+          "enum": [
+            "verified",
+            "declared",
+            "unsupported"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "title": "CapabilityValue",
+      "type": "object"
+    },
+    "DriverSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "default": "oneshot",
+          "enum": [
+            "oneshot",
+            "command-resume"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "resume_args": {
+          "default": [],
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/LaunchArgument"
+              }
+            ]
+          },
+          "title": "Resume Args",
+          "type": "array"
+        }
+      },
+      "title": "DriverSpec",
+      "type": "object"
+    },
+    "EnvironmentValue": {
+      "additionalProperties": false,
+      "properties": {
+        "secret_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Secret Ref"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "title": "EnvironmentValue",
+      "type": "object"
+    },
+    "FailurePatternSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "error_code": {
+          "enum": [
+            "agent_not_installed",
+            "agent_version_unsupported",
+            "agent_auth_missing",
+            "agent_auth_failed",
+            "agent_model_unsupported",
+            "agent_rate_limited",
+            "agent_usage_limit",
+            "agent_network_error",
+            "agent_timeout",
+            "agent_cancelled",
+            "agent_permission_required",
+            "agent_session_invalid",
+            "agent_remote_upload_not_allowed",
+            "agent_nonzero_exit",
+            "agent_output_parse_degraded",
+            "agent_cleanup_failed",
+            "agent_internal_error"
+          ],
+          "title": "Error Code",
+          "type": "string"
+        },
+        "pattern": {
+          "title": "Pattern",
+          "type": "string"
+        },
+        "producer_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Producer Code"
+        },
+        "streams": {
+          "default": [
+            "stdout",
+            "stderr"
+          ],
+          "items": {
+            "enum": [
+              "stdout",
+              "stderr"
+            ],
+            "type": "string"
+          },
+          "title": "Streams",
+          "type": "array"
+        }
+      },
+      "required": [
+        "error_code",
+        "pattern"
+      ],
+      "title": "FailurePatternSpec",
+      "type": "object"
+    },
+    "ImplementationSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "import_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Import Path"
+        },
+        "kind": {
+          "enum": [
+            "profile-runtime",
+            "plugin",
+            "existing-adapter"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ImplementationSpec",
+      "type": "object"
+    },
+    "IsolationSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "execution_locus": {
+          "enum": [
+            "host",
+            "docker-sandbox",
+            "remote-host"
+          ],
+          "title": "Execution Locus",
+          "type": "string"
+        },
+        "inherit_user_config": {
+          "default": false,
+          "title": "Inherit User Config",
+          "type": "boolean"
+        },
+        "network_required": {
+          "enum": [
+            "none",
+            "local_service",
+            "public_internet"
+          ],
+          "title": "Network Required",
+          "type": "string"
+        },
+        "permission_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Permission Mode"
+        },
+        "system_requires": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "System Requires",
+          "type": "array"
+        },
+        "user_config_paths": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "User Config Paths",
+          "type": "array"
+        }
+      },
+      "required": [
+        "execution_locus",
+        "network_required"
+      ],
+      "title": "IsolationSpec",
+      "type": "object"
+    },
+    "LaunchArgument": {
+      "additionalProperties": false,
+      "properties": {
+        "flag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Flag"
+        },
+        "omit_if_none": {
+          "default": false,
+          "title": "Omit If None",
+          "type": "boolean"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "LaunchArgument",
+      "type": "object"
+    },
+    "LaunchSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "default": [],
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/LaunchArgument"
+              }
+            ]
+          },
+          "title": "Args",
+          "type": "array"
+        },
+        "cwd": {
+          "default": "attempt_workspace",
+          "enum": [
+            "attempt_workspace",
+            "project",
+            "attempt_private"
+          ],
+          "title": "Cwd",
+          "type": "string"
+        },
+        "env": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/EnvironmentValue"
+              }
+            ]
+          },
+          "title": "Env",
+          "type": "object"
+        },
+        "executable": {
+          "title": "Executable",
+          "type": "string"
+        },
+        "shell": {
+          "default": false,
+          "title": "Shell",
+          "type": "boolean"
+        },
+        "shell_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shell Reason"
+        }
+      },
+      "required": [
+        "executable"
+      ],
+      "title": "LaunchSpec",
+      "type": "object"
+    },
+    "McpDialectSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "config_flag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Config Flag"
+        },
+        "dialect": {
+          "enum": [
+            "json-file",
+            "command-register",
+            "native-config",
+            "unsupported"
+          ],
+          "title": "Dialect",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dialect"
+      ],
+      "title": "McpDialectSpec",
+      "type": "object"
+    },
+    "ModelBindingSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "binding": {
+          "enum": [
+            "flag",
+            "environment",
+            "config-file",
+            "agent-default",
+            "unsupported"
+          ],
+          "title": "Binding",
+          "type": "string"
+        },
+        "default_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Model"
+        },
+        "env_var": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Env Var"
+        },
+        "flag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Flag"
+        },
+        "protocols": {
+          "default": [],
+          "items": {
+            "enum": [
+              "anthropic",
+              "openai-chat",
+              "openai-responses",
+              "agent-cloud",
+              "model-proxy"
+            ],
+            "type": "string"
+          },
+          "title": "Protocols",
+          "type": "array"
+        }
+      },
+      "required": [
+        "binding"
+      ],
+      "title": "ModelBindingSpec",
+      "type": "object"
+    },
+    "OutputSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "additionalProperties": true,
+          "title": "Config",
+          "type": "object"
+        },
+        "parser": {
+          "enum": [
+            "text",
+            "jsonl",
+            "native-session",
+            "atif",
+            "plugin"
+          ],
+          "title": "Parser",
+          "type": "string"
+        },
+        "parser_import_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parser Import Path"
+        },
+        "parser_version": {
+          "default": "1",
+          "title": "Parser Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "parser"
+      ],
+      "title": "OutputSpec",
+      "type": "object"
+    },
+    "PromptSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "arg_fallback": {
+          "default": "error",
+          "enum": [
+            "file",
+            "stdin",
+            "error"
+          ],
+          "title": "Arg Fallback",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "stdin",
+            "file",
+            "arg",
+            "driver-owned"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "PromptSpec",
+      "type": "object"
+    },
+    "SecretRefSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "env_var": {
+          "title": "Env Var",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "env_var"
+      ],
+      "title": "SecretRefSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "auth": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SecretRefSpec"
+      },
+      "title": "Auth",
+      "type": "array"
+    },
+    "availability": {
+      "$ref": "#/$defs/AvailabilityProbeSpec"
+    },
+    "capabilities": {
+      "$ref": "#/$defs/CapabilitySpec"
+    },
+    "display_name": {
+      "title": "Display Name",
+      "type": "string"
+    },
+    "driver": {
+      "$ref": "#/$defs/DriverSpec"
+    },
+    "failure_patterns": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/FailurePatternSpec"
+      },
+      "title": "Failure Patterns",
+      "type": "array"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "implementation": {
+      "$ref": "#/$defs/ImplementationSpec"
+    },
+    "isolation": {
+      "$ref": "#/$defs/IsolationSpec"
+    },
+    "launch": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LaunchSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "mcp": {
+      "$ref": "#/$defs/McpDialectSpec"
+    },
+    "metadata": {
+      "$ref": "#/$defs/AgentMetadata"
+    },
+    "model": {
+      "$ref": "#/$defs/ModelBindingSpec"
+    },
+    "options": {
+      "additionalProperties": {
+        "$ref": "#/$defs/AgentOptionSpec"
+      },
+      "title": "Options",
+      "type": "object"
+    },
+    "output": {
+      "$ref": "#/$defs/OutputSpec"
+    },
+    "prompt": {
+      "$ref": "#/$defs/PromptSpec"
+    },
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "builtin",
+        "config",
+        "config-override",
+        "plugin",
+        "legacy"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "transport": {
+      "enum": [
+        "local-cli",
+        "ssh-cli",
+        "acp",
+        "python-sdk",
+        "remote"
+      ],
+      "title": "Transport",
+      "type": "string"
+    },
+    "warnings": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "display_name",
+    "source",
+    "transport",
+    "implementation",
+    "prompt",
+    "model",
+    "mcp",
+    "output",
+    "isolation"
+  ],
+  "title": "AgentSpec",
+  "type": "object"
+}

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { api, type AgentInfo, type EnvSummary, type OpenRouterModel, type TaskJson } from "../api/client";
+import { api, formatApiError, type AgentInfo, type EnvSummary, type OpenRouterModel, type TaskJson } from "../api/client";
+import { AgentCatalogCard, agentCompatibilityWarnings, agentIsAvailable } from "../components/AgentCatalogCard";
 import { ModalityBadges, ModalityChip, modalityOptionMark } from "../components/ModalityChips";
 
 export function Submit() {
@@ -61,7 +62,7 @@ export function Submit() {
       const resp = await api.createRun(body);
       navigate(`/runs/${resp.run_id}`);
     } catch (e) {
-      setError(String(e));
+      setError(formatApiError(e));
     } finally {
       setSubmitting(false);
     }
@@ -69,7 +70,15 @@ export function Submit() {
 
   const currentEnv = envs.find((e) => e.name === envName);
   const currentTask = tasks.find((t) => t.id === taskId);
-  const onlineAgents = agents.filter((a) => a.status === "available").length;
+  const onlineAgents = agents.filter(agentIsAvailable).length;
+  const compatibilityWarnings = agents
+    .filter((agent) => selectedAgents.includes(agent.name))
+    .flatMap((agent) =>
+      agentCompatibilityWarnings(agent, {
+        explicitModel: model.trim().length > 0,
+        multiTurn: currentEnv?.multi_turn === true,
+      }),
+    );
 
   const filteredModels = (() => {
     const q = modelFilter.trim().toLowerCase();
@@ -175,25 +184,16 @@ export function Submit() {
         <div className="channel-body">
           <div className="chan-grid">
             {agents.map((a, i) => {
-              const available = a.status === "available";
               const on = selectedAgents.includes(a.name);
               return (
-                <label
+                <AgentCatalogCard
                   key={a.name}
-                  className={`chan-cell${on ? " on" : ""}${available ? "" : " off-avail"}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    disabled={!available}
-                    onChange={() => toggleAgent(a.name)}
-                  />
-                  <div className="chan-cell-id">{String(i + 1).padStart(2, "0")}</div>
-                  <div className="chan-cell-name">{a.name}</div>
-                  <div className={`chan-cell-state${available ? "" : " err"}`}>
-                    {available ? "ready" : a.status}
-                  </div>
-                </label>
+                  agent={a}
+                  index={i}
+                  inputType="checkbox"
+                  checked={on}
+                  onChange={() => toggleAgent(a.name)}
+                />
               );
             })}
             {agents.length === 0 && <div className="mx-empty">未发现任何 agent</div>}
@@ -271,6 +271,11 @@ export function Submit() {
         </div>
       </div>
 
+      {compatibilityWarnings.length > 0 && (
+        <div className="error-box" role="alert">
+          {compatibilityWarnings.map((warning) => <div key={warning}>{warning}</div>)}
+        </div>
+      )}
       {error && <p className="error-box">{error}</p>}
 
       <div className="submit-row">

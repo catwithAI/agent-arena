@@ -44,8 +44,54 @@ lane:
 #   - "gpt-5"
 #   - "openrouter/glm-5"
 
+# Versioned Agent registry extensions. Every executable/package is installed by
+# an administrator ahead of time; ordinary runs never install software.
+#
+# agents:
+#   profiles:
+#     my-profile:
+#       schema_version: "1"
+#       display_name: "My CLI Profile"
+#       transport: local-cli
+#       implementation: {kind: profile-runtime}
+#       availability: {executable: my-agent}
+#       launch: {executable: my-agent, args: []}
+#       prompt: {mode: stdin}
+#       model: {binding: agent-default}
+#       mcp: {dialect: unsupported}
+#       output: {parser: text}
+#       capabilities: {single_turn: declared}
+#       isolation: {execution_locus: host, network_required: public_internet}
+#
+#   # Exact ACP registry identity + raw-registry content hash. `command` is a
+#   # preinstalled ACP stdio server; npx/uvx registry metadata is never invoked.
+#   acp:
+#     "acp:my-agent@1.2.3":
+#       command: ["/opt/agents/my-agent", "--acp"]
+#       registry_sha256: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+#       # registry_url: "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json"
+#       permission_answers: {}  # toolCallId -> exact optionId; no implicit allow
+#
+#   remote:
+#     remote-example:
+#       endpoint: "https://agents.example.com/arena/"
+#       data_residency: "eu-west"
+#       upload_files: false
+#       api_key_env: "REMOTE_AGENT_API_KEY"
+#       supports_model: false
+#       cancellation_semantics: best-effort-unknown
+#
+#   python_plugins:
+#     python-example:
+#       entrypoint: "example_agent:ExampleAgent"
+#       display_name: "Example Python Agent"
+#       package_name: "example-agent"
+#       package_version: "0.1.0"
+#       supports_model: false
+#       supports_mcp: false
+
 # Any other CLI-based agent, keyed by the agent name used in `POST /runs`.
-# This is how you bring your own agent to agent-lane without writing a
+# This is the legacy way to bring your own agent to agent-arena without writing a
 # Python adapter — see backend/adapters/custom_cli.py for the full field
 # reference.
 #

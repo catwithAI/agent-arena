@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 from pydantic import SecretStr
 
@@ -49,6 +49,106 @@ class SshClaudeCodeSection(BaseModel):
     ssh_user: str = "root"
     ssh_password: SecretStr | None = None
     max_budget_usd: float = 5.0
+
+
+class AgentsSection(BaseModel):
+    """Versioned AgentSpec profiles keyed by their stable agent id.
+
+    Profile validation is performed by AgentRegistry so the loader can add
+    trusted provenance fields (source and override history) first.
+    """
+
+    profiles: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    # Plugin descriptors use the same AgentSpec shape as profiles (minus the
+    # trusted id/source fields) and must declare implementation.kind=plugin.
+    # Keeping metadata beside the import path lets the catalog stay lazy.
+    plugins: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    # Preinstalled ACP servers keyed by the exact registry identity
+    # ``acp:<id>@<version>``. Registry metadata never authorizes installation;
+    # ``command`` must already exist on the host.
+    acp: dict[str, "AcpInstalledAgentSection"] = Field(default_factory=dict)
+    remote: dict[str, "RemoteAgentSection"] = Field(default_factory=dict)
+    python_plugins: dict[str, "PythonPluginSection"] = Field(default_factory=dict)
+
+
+class AcpInstalledAgentSection(BaseModel):
+    command: list[str]
+    registry_url: str = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json"
+    registry_sha256: str
+    registry_entry: dict[str, Any] | None = None
+    env: dict[str, str] = Field(default_factory=dict)
+    env_from: list[str] = Field(default_factory=list)
+    permission_answers: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("command")
+    @classmethod
+    def command_is_nonempty(cls, value: list[str]) -> list[str]:
+        if not value or any(not item for item in value):
+            raise ValueError("ACP command must contain non-empty argv entries")
+        return value
+
+    @field_validator("registry_sha256")
+    @classmethod
+    def checksum_is_pinned(cls, value: str) -> str:
+        import re
+
+        normalized = value.removeprefix("sha256:").lower()
+        if not re.fullmatch(r"[a-f0-9]{64}", normalized):
+            raise ValueError("ACP registry_sha256 must be a SHA-256 digest")
+        return f"sha256:{normalized}"
+
+    @field_validator("env_from")
+    @classmethod
+    def valid_forwarded_environment(cls, value: list[str]) -> list[str]:
+        import re
+
+        if len(value) != len(set(value)):
+            raise ValueError("ACP env_from entries must be unique")
+        if any(not re.fullmatch(r"[A-Z_][A-Z0-9_]*", name) for name in value):
+            raise ValueError("ACP env_from entries must be uppercase environment variable names")
+        return value
+
+
+class RemoteAgentSection(BaseModel):
+    endpoint: HttpUrl
+    data_residency: str
+    upload_files: bool = False
+    api_key_env: str | None = None
+    supports_model: bool = False
+    supports_multi_turn: bool = False
+    poll_interval_seconds: float = Field(default=0.25, ge=0, le=30)
+    max_upload_bytes: int = Field(default=25 * 1024 * 1024, gt=0)
+    max_artifact_bytes: int = Field(default=100 * 1024 * 1024, gt=0)
+    cancellation_semantics: Literal["confirmed", "best-effort-unknown"] = (
+        "best-effort-unknown"
+    )
+
+    @field_validator("api_key_env")
+    @classmethod
+    def valid_api_key_env(cls, value: str | None) -> str | None:
+        import re
+
+        if value is not None and not re.fullmatch(r"[A-Z_][A-Z0-9_]*", value):
+            raise ValueError("remote api_key_env must be an uppercase environment variable")
+        return value
+
+
+class PythonPluginSection(BaseModel):
+    entrypoint: str
+    display_name: str | None = None
+    supports_model: bool = False
+    supports_mcp: bool = False
+    package_name: str | None = None
+    package_version: str | None = None
+
+    @field_validator("entrypoint")
+    @classmethod
+    def valid_entrypoint(cls, value: str) -> str:
+        import re
+
+        if not re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*:[A-Za-z_]\w*", value):
+            raise ValueError("Python plugin entrypoint must use module.path:attribute")
+        return value
 
 
 class LaneSection(BaseModel):
@@ -92,6 +192,7 @@ class Settings(BaseModel):
     # /runs`. This is how third parties bring their own agent to agent-arena
     # without writing a Python adapter.
     custom_agents: dict[str, CustomAgentSection] = Field(default_factory=dict)
+    agents: AgentsSection = Field(default_factory=AgentsSection)
     # Optional: Claude Code over SSH on a remote machine, registered as the
     # "ssh-claude-code" agent when ssh_host is set (see build_adapter in
     # backend/run_dispatch.py).

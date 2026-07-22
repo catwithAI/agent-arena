@@ -4,15 +4,9 @@
 concurrently (or serially, for UIs that want to show one at a time) via
 `backend.runner`.
 
-Agent resolution is intentionally simple and open-ended:
-- "claude-code" / "codex" map to the reference adapters.
-- "ssh-claude-code" maps to `SshClaudeCodeAdapter` (backend/adapters/
-  ssh_claude_code.py), only when `settings.ssh_claude_code.ssh_host` is
-  configured — Claude Code run over SSH on a remote machine instead of a
-  local subprocess.
-- Anything else is looked up in `settings.custom_agents` and built into a
-  `CustomCliAdapter` — this is the extension point for third-party agents,
-  see backend/adapters/custom_cli.py.
+Agent identity and construction are resolved through ``AgentRegistry``.
+Existing adapters remain lazy migration bridges, while legacy
+``custom_agents`` entries are translated into versioned descriptors.
 """
 
 from __future__ import annotations
@@ -24,20 +18,16 @@ from typing import Any
 
 from . import runtime_state
 from .adapters.base import AdapterRunInput, McpServerSpec
-from .adapters.custom_cli import CustomCliAdapter, CustomCliConfig
+from .agents.registry import AgentRegistry, AgentRegistryError
+from .agents.compatibility import check_compatibility
 from .config import Settings
 from .db import _now_iso, _open_sync
-from .model_providers import parse_model_ref
+from .model_providers import parse_model_ref, resolve_api_key
 from .runner import run_attempt
 from .wire.lifecycle import CapturePreparationError, WireCaptureSession, capture_capabilities_for
 from .wire.policy import resolve_effective_policy
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_MODELS = {
-    "claude-code": "sonnet",
-    "codex": "gpt-5",
-}
 
 # Wire capture only covers agents that run over plain HTTP+SSE with a
 # rewritable base URL (claude-code / codex). Anything plugged in via
@@ -89,51 +79,16 @@ def _build_wire_sources(
 
 
 def known_agents(settings: Settings) -> tuple[str, ...]:
-    agents = ("claude-code", "codex")
-    if settings.ssh_claude_code.ssh_host is not None:
-        agents = (*agents, "ssh-claude-code")
-    return (*agents, *settings.custom_agents.keys())
+    return AgentRegistry.from_settings(settings).known_agents()
 
 
 def build_adapter(agent_name: str, settings: Settings, model: str | None = None) -> Any:
-    if agent_name == "claude-code":
-        from .adapters.claude_code import ClaudeCodeAdapter
-
-        return ClaudeCodeAdapter(
-            project_path=Path(".").resolve(),
-            model=model or _DEFAULT_MODELS["claude-code"],
-            providers=settings.model_providers,
-        )
-
-    if agent_name == "codex":
-        from .adapters.codex import CodexAdapter
-
-        return CodexAdapter(
-            project_path=Path(".").resolve(),
-            model=model or _DEFAULT_MODELS["codex"],
-            providers=settings.model_providers,
-        )
-
-    if agent_name == "ssh-claude-code":
-        ssh = settings.ssh_claude_code
-        if ssh.ssh_host is None:
-            return None
-        from .adapters.ssh_claude_code import SshClaudeCodeAdapter
-
-        return SshClaudeCodeAdapter(
-            ssh_host=ssh.ssh_host,
-            ssh_user=ssh.ssh_user,
-            ssh_password=ssh.ssh_password.get_secret_value() if ssh.ssh_password else "",
-            project_path=Path(".").resolve(),
-            max_budget_usd=ssh.max_budget_usd,
-        )
-
-    custom = settings.custom_agents.get(agent_name)
-    if custom is not None:
-        config = CustomCliConfig(name=agent_name, **custom.model_dump())
-        return CustomCliAdapter(config, project_path=Path(".").resolve())
-
-    return None
+    registry = AgentRegistry.from_settings(settings)
+    try:
+        resolved = registry.resolve(agent_name)
+    except AgentRegistryError:
+        return None
+    return resolved.build_adapter(model=model)
 
 
 class _BoundAdapter:
@@ -177,22 +132,6 @@ async def dispatch(
             status="agent_unavailable",
             error_code="env_not_loaded",
             error_message=f"env not loaded: {env_name}",
-            pass_threshold=60,
-        )
-        _refresh_run_status(state.db_path, attempt_id)
-        return
-
-    adapter = build_adapter(agent_name, settings, model=model)
-    if adapter is None:
-        from .runner import _finalize_no_score
-
-        logger.warning("dispatch: no adapter for agent %s, marking cli_not_found", agent_name)
-        _finalize_no_score(
-            db_path=state.db_path,
-            attempt_id=attempt_id,
-            status="cli_not_found",
-            error_code="adapter_not_configured",
-            error_message=f"no adapter registered for agent '{agent_name}'",
             pass_threshold=60,
         )
         _refresh_run_status(state.db_path, attempt_id)
@@ -244,6 +183,92 @@ async def dispatch(
         )
         _refresh_run_status(state.db_path, attempt_id)
         return
+
+    registry = state.agent_registry
+    try:
+        resolved = registry.resolve(agent_name)
+        availability = await registry.probe_availability(agent_name, refresh=True)
+    except AgentRegistryError as exc:
+        from .runner import _finalize_no_score
+
+        _finalize_no_score(
+            db_path=state.db_path,
+            attempt_id=attempt_id,
+            status="agent_unavailable",
+            error_code="adapter_not_configured",
+            error_message=str(exc),
+            pass_threshold=int(env.meta.get("pass_threshold", 60)),
+        )
+        _refresh_run_status(state.db_path, attempt_id)
+        return
+    provider_protocol = None
+    provider_auth_available = None
+    if model is not None:
+        model_ref = parse_model_ref(model, settings.model_providers or {})
+        if model_ref.provider is not None:
+            provider = settings.model_providers[model_ref.provider]
+            provider_protocol = provider.kind
+            if provider.api_key_env is not None:
+                provider_auth_available = resolve_api_key(provider) is not None
+    compatibility = check_compatibility(
+        resolved.spec,
+        availability=availability,
+        requested_model=model,
+        provider_protocol=provider_protocol,
+        provider_auth_available=provider_auth_available,
+        mcp_servers=mcp_servers,
+        conversation_turns=conversation_turns,
+    )
+    if not compatibility.compatible:
+        from .runner import _finalize_no_score
+
+        issue = compatibility.issues[0]
+        logger.warning(
+            "dispatch: compatibility failed attempt=%s agent=%s code=%s",
+            attempt_id,
+            agent_name,
+            issue.code,
+        )
+        _finalize_no_score(
+            db_path=state.db_path,
+            attempt_id=attempt_id,
+            status="agent_unavailable",
+            error_code=issue.code,
+            error_message=issue.message,
+            pass_threshold=int(env.meta.get("pass_threshold", 60)),
+        )
+        _refresh_run_status(state.db_path, attempt_id)
+        return
+
+    try:
+        adapter = resolved.build_adapter(model=model)
+    except AgentRegistryError as exc:
+        from .runner import _finalize_no_score
+
+        _finalize_no_score(
+            db_path=state.db_path,
+            attempt_id=attempt_id,
+            status="agent_unavailable",
+            error_code="adapter_load_failed",
+            error_message=str(exc),
+            pass_threshold=int(env.meta.get("pass_threshold", 60)),
+        )
+        _refresh_run_status(state.db_path, attempt_id)
+        return
+    if adapter is None:
+        from .runner import _finalize_no_score
+
+        _finalize_no_score(
+            db_path=state.db_path,
+            attempt_id=attempt_id,
+            status="agent_unavailable",
+            error_code="adapter_not_configured",
+            error_message=f"no adapter registered for agent '{agent_name}'",
+            pass_threshold=int(env.meta.get("pass_threshold", 60)),
+        )
+        _refresh_run_status(state.db_path, attempt_id)
+        return
+
     if any(t.action == "answer_interaction" for t in conversation_turns) and not getattr(
         getattr(adapter, "capabilities", None), "interaction_answer", False
     ):

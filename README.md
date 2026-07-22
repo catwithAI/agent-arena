@@ -23,12 +23,12 @@ rather than a single noisy run.
 ## Quick start
 
 ```bash
-uv sync
-cp arena.yaml.example arena.yaml   # defaults work for local, single-machine use
-uv run uvicorn backend.main:create_app --factory --port 8100
-
-cd web && npm install && npm run dev
+./start.sh
 ```
+
+The script creates the gitignored `arena.yaml` and installs missing dependencies
+on first run. Use `./start.sh --help` for port overrides and backend/frontend-only
+modes.
 
 Open the frontend (default `http://127.0.0.1:5173`), pick an environment,
 select the agents you have installed (`claude-code`/`codex` must be on

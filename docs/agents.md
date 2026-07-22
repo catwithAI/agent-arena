@@ -1,7 +1,8 @@
 # Plugging in an agent
 
-agent-arena ships with two reference adapters — **Claude Code** and
-**Codex** — and an open extension point for anything else.
+agent-arena ships with reference adapters for **Claude Code**, **Codex** and
+the pinned **DeerFlow 2** integration, plus registry-backed extension points
+for CLI profiles, ACP, trusted Python plugins and remote services.
 
 Both reference adapters preserve each agent's full native capability set
 (WebSearch, subagent/task delegation, skills, slash commands, whatever the
@@ -95,6 +96,55 @@ ssh_claude_code:
   spool/injection channel, so `wire_capture_capabilities` declares every
   field unsupported.
 
+## Built-in: DeerFlow
+
+The stable `deerflow` descriptor targets `deerflow-harness==2.0.0` at revision
+`7e7f0410797693cf882594555ba414e0361d4c6f`. The package and
+`deerflow-arena-runner` must be installed by an administrator; a run never
+installs or updates them. Each Attempt receives a private DeerFlow project,
+home and config plus a checked bridge to `skill_workspace`.
+
+The current integration supports its verified single-turn runner and local
+sandbox event stream. Lane MCP, cross-Attempt resume and observable child Agent
+identity remain unsupported. See
+[the pinned spike](specs/scalable_agent_integration/deerflow-spike.md).
+
+## Registry-backed Agent configuration
+
+`AgentRegistry` is the source of truth used by the catalog, compatibility
+preflight and dispatch. `agents.profiles` describes local CLIs with strict
+AgentSpec v1 fields; `agents.acp`, `agents.remote`, and
+`agents.python_plugins` use focused configuration shown in
+[`arena.yaml.example`](../arena.yaml.example). Legacy `custom_agents` remains
+available for migration and appears with `source=legacy` plus a warning.
+
+### ACP v1
+
+ACP entries use exact IDs such as `acp:my-agent@1.2.3`. The configured command
+must already be installed and registry metadata must be pinned by SHA-256.
+Normal runs never execute package installation from registry `binary`, `npx`,
+or `uvx` metadata. One shared transport handles every entry. Unmatched
+permission requests are cancelled and fail the Attempt; no allow option is
+selected implicitly.
+
+### Remote services
+
+Remote entries disclose endpoint, data residency, source upload policy and
+cancellation semantics in the picker. Endpoints require HTTPS. Files are sent
+only when `upload_files` is enabled; returned artifacts must be same-origin,
+size/checksum verified, and resolve within the Attempt workspace. An
+unconfirmed server-side cancellation is recorded as
+`cancel_requested_remote_unknown`. See the
+[remote contract](specs/scalable_agent_integration/remote-transport.md).
+
+### Trusted Python plugins
+
+`agents.python_plugins` points at an external `module:attribute`, imported only
+when selected. The shared wrapper owns prompt/MCP inputs, manifests, redaction,
+output limits and artifact validation. These plugins execute inside the backend
+process and are trusted code, not a sandbox. Start from the
+[example package](../examples/python_agent_plugin/README.md).
+
 ## Bringing your own agent
 
 Two ways in, from least to most control:
@@ -125,27 +175,26 @@ The agent then shows up as `"my-agent"` in `POST /runs`'s `agents` list and
 in the frontend's agent picker, exactly like `claude-code`/`codex`. See
 `backend/adapters/custom_cli.py` for the full field reference.
 
-### 2. A Python adapter, for full control
+### 2. A framework-wrapped Python plugin
 
-Implement the `AgentAdapter` protocol (`backend/adapters/base.py`):
+Implement the small Python plugin contract:
 
 ```python
-class MyAdapter:
-    async def run(self, task: AdapterRunInput, env, data_path: Path) -> AdapterResult:
-        # spawn your agent, feed it task.task_prompt / task.task_context,
-        # and if your CLI supports MCP, wire up whatever's in
-        # task.mcp_servers (each a base.McpServerSpec: name/command/args/cwd,
-        # taken verbatim from the scenario's entrypoints.mcp declaration —
-        # don't invent a server from task.env_name). Credentials for env
-        # vars: LANE_ATTEMPT_ID, LANE_SESSION_TOKEN, LANE_BASE_URL.
-        # Never raise — wrap failures into AdapterResult(status=...).
-        ...
+from backend.agents.python_plugin import PythonAgentOutput
+
+class MyAgent:
+    async def run(self, context):
+        output = context.artifact_path("answer.txt")
+        output.write_text("done")
+        return PythonAgentOutput(
+            final_text="Created answer.txt",
+            artifacts=("answer.txt",),
+        )
 ```
 
-Register it in `backend/run_dispatch.py::build_adapter`. This is the path
-`ClaudeCodeAdapter`/`CodexAdapter` themselves take — reach for it when you
-need behavior `CustomCliAdapter`'s config surface can't express (custom
-retry logic, a non-CLI transport, bespoke usage accounting).
+Register the external entrypoint under `agents.python_plugins`; do not edit
+dispatch. If you truly need a new transport, add one registry builder and keep
+its runtime/parser behavior behind the standard `AgentAdapter` result contract.
 
 ## Fairness notes
 

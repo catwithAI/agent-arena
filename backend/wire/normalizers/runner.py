@@ -37,11 +37,13 @@ from backend.wire.evidence import (
 )
 from backend.wire.normalizers.claude_code import ClaudeCodeNormalizer
 from backend.wire.normalizers.codex import CodexNormalizer
+from backend.wire.normalizers.deerflow import DeerFlowNormalizer
 from backend.wire.trajectory_schema import TRAJECTORY_SCHEMA_VERSION
 
 _NORMALIZERS = {
     "claude-code": ClaudeCodeNormalizer,
     "codex": CodexNormalizer,
+    "deerflow": DeerFlowNormalizer,
 }
 
 

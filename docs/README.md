@@ -50,11 +50,7 @@ Python 3.11+ / FastAPI / SQLite / uv (backend) — React + Vite + TypeScript
 ## Quick start
 
 ```bash
-uv sync
-cp arena.yaml.example arena.yaml   # edit if you need non-default paths
-uv run uvicorn backend.main:create_app --factory --port 8100
-
-cd web && npm install && npm run dev
+./start.sh
 ```
 
 Open the frontend, pick the `order-desk` environment, select `claude-code`

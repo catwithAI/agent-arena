@@ -1,8 +1,7 @@
 """Frontend-facing REST API (mounted with no prefix by `main.create_app()`).
 
-- `GET /agents` — lists agents this instance can dispatch to right now:
-  the built-in `claude-code` / `codex` adapters plus anything declared under
-  `custom_agents` in `arena.yaml`.
+- `GET /agents` — returns the registry catalog, including built-ins,
+  versioned profiles/plugins and translated legacy `custom_agents` entries.
 - `GET /models/providers` — third-party model provider names configured for
   claude-code/codex (never exposes base_url/api_key_env values).
 - `GET /openrouter/models` — full OpenRouter model catalog (bare model ids),
@@ -21,7 +20,6 @@ import copy
 import json
 import logging
 import os
-import shutil
 import time
 import uuid
 from pathlib import Path
@@ -32,10 +30,14 @@ from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
 from . import runtime_state
+from .agents.registry import AgentRegistry
+from .agents.compatibility import check_compatibility
 from .artifact_preview import scheduled_preview_descriptor
 from .db import _now_iso, _open_sync
 from .run_dispatch import dispatch as dispatch_attempt
+from .run_dispatch import _mcp_server_specs
 from .run_dispatch import known_agents
+from .model_providers import parse_model_ref, resolve_api_key
 from .runner import create_attempt
 
 logger = logging.getLogger(__name__)
@@ -77,38 +79,8 @@ async def _dispatch_all(run_id: str, jobs: list[dict[str, Any]]) -> None:
 # ---------- /agents -----------------------------------------------------------
 
 
-def _list_agents(settings) -> list[dict[str, Any]]:
-    agents = []
-    claude_path = shutil.which("claude")
-    agents.append(
-        {
-            "name": "claude-code",
-            "status": "available" if claude_path else "not_found",
-            "detail": None if claude_path else "claude CLI not found in PATH",
-            "cli_path": claude_path,
-        }
-    )
-    codex_path = shutil.which("codex")
-    agents.append(
-        {
-            "name": "codex",
-            "status": "available" if codex_path else "not_found",
-            "detail": None if codex_path else "codex CLI not found in PATH",
-            "cli_path": codex_path,
-        }
-    )
-    for name, custom in settings.custom_agents.items():
-        exe = custom.command[0] if custom.command else ""
-        exe_path = shutil.which(exe) or (exe if Path(exe).exists() else None)
-        agents.append(
-            {
-                "name": name,
-                "status": "available" if exe_path else "not_found",
-                "detail": None if exe_path else f"'{exe}' not found in PATH",
-                "cli_path": exe_path,
-            }
-        )
-    return agents
+async def _list_agents(settings) -> list[dict[str, Any]]:
+    return await AgentRegistry.from_settings(settings).describe_all_async()
 
 
 # ---------- /runs body ---------------------------------------------------------
@@ -360,6 +332,42 @@ def _read_wire_manifest(attempt_dir: Path) -> dict[str, Any] | None:
         return None
 
 
+def _public_agent_manifest(attempt_dir: Path) -> dict[str, Any]:
+    """Return a fixed, display-only projection of the framework-owned manifest.
+
+    Launch argv/env/config are intentionally never exposed by this endpoint,
+    even if a corrupt or manually modified manifest contains plaintext.
+    """
+    path = attempt_dir / ".agent-control" / "agent-manifest.json"
+    if not path.is_file():
+        return {"status": "not_available", "manifest": None}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"status": "invalid", "manifest": None}
+    if not isinstance(raw, dict) or raw.get("schema_version") != "1":
+        return {"status": "invalid", "manifest": None}
+
+    def mapping(name: str) -> dict[str, Any]:
+        value = raw.get(name)
+        return dict(value) if isinstance(value, dict) else {}
+
+    return {
+        "status": "available",
+        "manifest": {
+            "status": raw.get("status"),
+            "agent": mapping("agent"),
+            "model": mapping("model"),
+            "coverage": mapping("coverage"),
+            "cleanup": mapping("cleanup"),
+            "outcome": mapping("outcome"),
+            "degradations": [
+                str(value) for value in raw.get("degradations", [])
+            ]
+            if isinstance(raw.get("degradations"), list)
+            else [],
+        },
+    }
 def _read_wire_records(attempt_dir: Path) -> list[dict[str, Any]]:
     """Read canonical wire.jsonl (missing/truncated fail-open)."""
     return _read_jsonl(attempt_dir / "wire.jsonl")
@@ -667,7 +675,7 @@ def build_router() -> APIRouter:
 
     @router.get("/agents")
     async def list_agents(request: Request) -> list[dict[str, Any]]:
-        return _list_agents(request.app.state.settings)
+        return await request.app.state.agent_registry.describe_all_async()
 
     @router.get("/models/providers")
     async def list_model_providers(request: Request) -> dict[str, Any]:
@@ -786,13 +794,57 @@ def build_router() -> APIRouter:
             ConversationPlanError,
             parse_conversation,
         )
+        conversation_turns = ()
         if CONVERSATION_CONTEXT_KEY in (context or {}):
             try:
-                parse_conversation(context[CONVERSATION_CONTEXT_KEY], task_id=task_id)
+                conversation_turns = parse_conversation(
+                    context[CONVERSATION_CONTEXT_KEY], task_id=task_id
+                )
             except ConversationPlanError as exc:
                 raise HTTPException(
                     status_code=400, detail=f"invalid conversation: {exc}"
                 )
+
+        # Compatibility is checked for the complete fan-out before the first
+        # attempt is created. This keeps comparison groups atomic: one bad
+        # Agent/model/MCP combination cannot leave a partial run behind.
+        try:
+            declared_mcp_servers = _mcp_server_specs(state.envs[env_name])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"invalid MCP entrypoint: {exc}")
+        registry = AgentRegistry.from_settings(settings)
+        incompatible_reports = []
+        for agent_name, agent_model in job_plan:
+            resolved = registry.resolve(agent_name)
+            availability = await registry.probe_availability(agent_name)
+            provider_protocol = None
+            provider_auth_available = None
+            if agent_model is not None:
+                model_ref = parse_model_ref(agent_model, settings.model_providers or {})
+                if model_ref.provider is not None:
+                    provider = settings.model_providers[model_ref.provider]
+                    provider_protocol = provider.kind
+                    if provider.api_key_env is not None:
+                        provider_auth_available = resolve_api_key(provider) is not None
+            report = check_compatibility(
+                resolved.spec,
+                availability=availability,
+                requested_model=agent_model,
+                provider_protocol=provider_protocol,
+                provider_auth_available=provider_auth_available,
+                mcp_servers=declared_mcp_servers,
+                conversation_turns=conversation_turns,
+            )
+            if not report.compatible:
+                incompatible_reports.append(report.as_dict())
+        if incompatible_reports:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "agent_compatibility_mismatch",
+                    "reports": incompatible_reports,
+                },
+            )
 
         run_id = f"run_{uuid.uuid4().hex[:12]}"
 
@@ -882,6 +934,18 @@ def build_router() -> APIRouter:
             "final_state": final_state,
             "conversation": conversation,
         }
+
+    @router.get("/runs/{run_id}/attempts/{attempt_id}/agent-manifest")
+    async def get_agent_manifest(run_id: str, attempt_id: str) -> dict[str, Any]:
+        state = runtime_state.get()
+        attempt_dir = await asyncio.to_thread(
+            _artifact_attempt_dir,
+            data_path=state.data_path,
+            db_path=state.db_path,
+            run_id=run_id,
+            attempt_id=attempt_id,
+        )
+        return await asyncio.to_thread(_public_agent_manifest, attempt_dir)
 
     @router.get("/runs/{run_id}/attempts/{attempt_id}/thinking")
     async def get_attempt_thinking(run_id: str, attempt_id: str) -> list[dict[str, Any]]:
