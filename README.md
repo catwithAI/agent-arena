@@ -59,6 +59,20 @@ See [docs/environments.md](docs/environments.md) to add your own.
 - [docs/architecture.md](docs/architecture.md) — how the pieces fit together
 - [docs/environments.md](docs/environments.md) — writing a new evaluation environment
 - [docs/agents.md](docs/agents.md) — plugging in a new agent
+- [docs/experiments.md](docs/experiments.md) — batch experiments and reports
+
+## Batch experiments
+
+Expand tasks, comparison variants and repetitions into a resumable experiment:
+
+```bash
+cp experiment.yaml.example experiment.yaml
+uv run python scripts/run_experiment.py --config experiment.yaml
+```
+
+The output under `data/experiments/<id>/` includes an append-only job journal,
+per-attempt results, `summary.json`, and a Markdown report. See
+[the experiment guide](docs/experiments.md) for resume and retry behavior.
 
 ## License
 

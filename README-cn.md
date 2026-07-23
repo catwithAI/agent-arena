@@ -54,6 +54,29 @@ provider 两边都没配置 key，评测会立刻以清晰的 `provider_api_key_
 - [docs/architecture.md](docs/architecture.md) —— 各模块如何协同工作
 - [docs/environments.md](docs/environments.md) —— 如何编写新的评测环境
 - [docs/agents.md](docs/agents.md) —— 如何接入新的 agent
+- [docs/experiments.md](docs/experiments.md) —— 批量实验、断点续跑与统计报告
+
+## 批量实验
+
+Arena 可以在现有 Run/Attempt 之上展开 `task × variant × repeat` 实验矩阵，并将
+配置哈希、AgentSpec、有效模型和代码版本一同保存：
+
+```bash
+cp experiment.yaml.example experiment.yaml
+uv run python scripts/run_experiment.py --config experiment.yaml
+```
+
+中断后用输出的 Experiment ID 恢复；失败项只有在显式指定时才重跑：
+
+```bash
+uv run python scripts/run_experiment.py \
+  --config experiment.yaml \
+  --resume exp_20260723_120000 \
+  --retry-failed
+```
+
+结果位于 `data/experiments/<id>/`，包括原始 JSONL、`summary.json` 和
+`report.md`。
 
 ## 许可证
 

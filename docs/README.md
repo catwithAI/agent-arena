@@ -47,6 +47,8 @@ Python 3.11+ / FastAPI / SQLite / uv (backend) — React + Vite + TypeScript
 - [environments.md](environments.md) — how to write a new evaluation
   environment
 - [agents.md](agents.md) — how to plug in a new agent
+- [experiments.md](experiments.md) — batch execution, resume, aggregation,
+  and reproducibility manifests
 
 ## Quick start
 
