@@ -83,7 +83,14 @@ def test_existing_and_legacy_agents_share_the_registry_and_hash_is_stable():
     )
     first = AgentRegistry.from_settings(settings)
     second = AgentRegistry.from_settings(settings)
-    assert first.known_agents() == ("claude-code", "codex", "deerflow", "my-agent")
+    assert first.known_agents() == (
+        "claude-code",
+        "codex",
+        "deerflow",
+        "kimi-code",
+        "mimo-code",
+        "my-agent",
+    )
     legacy = first.resolve("my-agent").spec
     assert legacy.source == "legacy"
     assert legacy.warnings

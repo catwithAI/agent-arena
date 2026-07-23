@@ -544,6 +544,8 @@ def _builtin_specs(settings: Any) -> tuple[AgentSpec, ...]:
                 },
             }
         ),
+        _kimi_code_spec(),
+        _mimo_code_spec(),
     ]
     if settings.ssh_claude_code.ssh_host is not None:
         specs.append(
@@ -558,6 +560,228 @@ def _builtin_specs(settings: Any) -> tuple[AgentSpec, ...]:
             )
         )
     return tuple(specs)
+
+
+def _kimi_code_spec() -> AgentSpec:
+    return AgentSpec.model_validate(
+        {
+            "schema_version": "1",
+            "id": "kimi-code",
+            "display_name": "Kimi Code",
+            "source": "builtin",
+            "transport": "local-cli",
+            "implementation": {"kind": "profile-runtime"},
+            "availability": {
+                "executable": "kimi",
+                "version_command": ["{executable}", "--version"],
+                "version_constraint": ">=0.29.0",
+                "version_scheme": "semver",
+            },
+            "launch": {
+                "executable": "kimi",
+                "args": [
+                    {"flag": "-p", "value": "prompt"},
+                    "--output-format",
+                    "stream-json",
+                    {"flag": "-m", "value": "effective_model", "omit_if_none": True},
+                    {
+                        "flag": "--mcp-config-file",
+                        "value": "mcp_config_file",
+                        "omit_if_none": True,
+                    },
+                ],
+            },
+            "prompt": {"mode": "arg"},
+            "driver": {
+                "kind": "command-resume",
+                "resume_args": [
+                    {"flag": "--session", "value": "session_id"},
+                    {"flag": "-p", "value": "prompt"},
+                    "--output-format",
+                    "stream-json",
+                    {"flag": "-m", "value": "effective_model", "omit_if_none": True},
+                    {
+                        "flag": "--mcp-config-file",
+                        "value": "mcp_config_file",
+                        "omit_if_none": True,
+                    },
+                ],
+            },
+            "model": {
+                "binding": "flag",
+                "flag": "-m",
+                "protocols": ["openai-chat", "anthropic", "agent-cloud"],
+            },
+            "auth": [
+                {"name": "Kimi model name", "env_var": "KIMI_MODEL_NAME"},
+                {"name": "Kimi model API key", "env_var": "KIMI_MODEL_API_KEY"},
+            ],
+            "mcp": {"dialect": "json-file", "config_flag": "--mcp-config-file"},
+            "output": {
+                "parser": "jsonl",
+                "parser_version": "kimi-stream-json-v1",
+                "config": {
+                    "type_field": "role",
+                    "text_field": "content",
+                    "final_type_value": "assistant",
+                    "session_field": "session_id",
+                    "tool_type_value": "tool",
+                },
+            },
+            "capabilities": {
+                "single_turn": {
+                    "state": "declared",
+                    "basis": "Kimi Code 0.29 print-mode contract",
+                },
+                "resume_send_message": {
+                    "state": "declared",
+                    "basis": "stream-json session.resume_hint plus explicit --session",
+                },
+                "mcp": {
+                    "state": "declared",
+                    "basis": "official --mcp-config-file mcpServers dialect",
+                },
+                "structured_events": "declared",
+                "token_usage": "unsupported",
+                "thinking": "unsupported",
+                "tools": "declared",
+                "subagent_identity": "unsupported",
+                "wire": "unsupported",
+            },
+            "isolation": {
+                "execution_locus": "host",
+                "network_required": "public_internet",
+                "permission_mode": "agent-auto",
+            },
+            "metadata": {
+                "homepage": "https://moonshotai.github.io/kimi-code/",
+                "installation_url": "https://github.com/MoonshotAI/kimi-code#install",
+                "repository": "https://github.com/MoonshotAI/kimi-code",
+                "package_name": "@moonshot-ai/kimi-code",
+                "package_version": "0.29.0",
+                "maintainer": "Moonshot AI",
+                "license": "MIT",
+                "description": "Kimi Code CLI print-mode integration",
+                "experimental": True,
+                "supported_platforms": ["linux", "darwin", "windows"],
+            },
+            "failure_patterns": [
+                {
+                    "error_code": "agent_auth_missing",
+                    "pattern": "login required|please.*login|configuration incomplete",
+                }
+            ],
+            "warnings": [
+                "Runs with an Attempt-private home; global Kimi login, skills and sessions are not inherited."
+            ],
+        }
+    )
+
+
+def _mimo_code_spec() -> AgentSpec:
+    return AgentSpec.model_validate(
+        {
+            "schema_version": "1",
+            "id": "mimo-code",
+            "display_name": "MiMo Code",
+            "source": "builtin",
+            "transport": "local-cli",
+            "implementation": {"kind": "profile-runtime"},
+            "availability": {
+                "executable": "mimo",
+                "version_command": ["{executable}", "--version"],
+                "version_constraint": ">=0.1.7",
+                "version_scheme": "semver",
+            },
+            "launch": {
+                "executable": "mimo",
+                "args": [
+                    "run",
+                    "--format",
+                    "json",
+                    "--dangerously-skip-permissions",
+                    {"flag": "--model", "value": "effective_model", "omit_if_none": True},
+                    {"value": "prompt"},
+                ],
+            },
+            "prompt": {"mode": "arg", "arg_fallback": "stdin"},
+            "driver": {
+                "kind": "command-resume",
+                "resume_args": [
+                    "run",
+                    "--format",
+                    "json",
+                    "--dangerously-skip-permissions",
+                    {"flag": "--session", "value": "session_id"},
+                    {"flag": "--model", "value": "effective_model", "omit_if_none": True},
+                    {"value": "prompt"},
+                ],
+            },
+            "model": {
+                "binding": "flag",
+                "flag": "--model",
+                "protocols": ["openai-chat", "agent-cloud"],
+            },
+            "auth": [
+                {
+                    "name": "MiMo serialized authentication",
+                    "env_var": "MIMOCODE_AUTH_CONTENT",
+                    "required": False,
+                }
+            ],
+            "mcp": {"dialect": "unsupported"},
+            "output": {
+                "parser": "jsonl",
+                "parser_version": "mimo-run-json-v1",
+                "config": {
+                    "type_field": "type",
+                    "text_field": "part.text",
+                    "usage_field": "part.tokens",
+                    "thinking_type_value": "reasoning",
+                    "final_type_value": "text",
+                    "session_field": "sessionID",
+                    "tool_type_value": "tool_use",
+                },
+            },
+            "capabilities": {
+                "single_turn": {
+                    "state": "declared",
+                    "basis": "MiMo Code 0.1.7 run command contract",
+                },
+                "resume_send_message": {
+                    "state": "declared",
+                    "basis": "JSON sessionID plus explicit --session",
+                },
+                "mcp": "unsupported",
+                "structured_events": "declared",
+                "token_usage": "declared",
+                "thinking": "declared",
+                "tools": "declared",
+                "subagent_identity": "unsupported",
+                "wire": "unsupported",
+            },
+            "isolation": {
+                "execution_locus": "host",
+                "network_required": "public_internet",
+                "permission_mode": "dangerously-skip-permissions",
+            },
+            "metadata": {
+                "homepage": "https://mimo.xiaomi.com/",
+                "installation_url": "https://github.com/XiaomiMiMo/MiMo-Code#quick-start",
+                "repository": "https://github.com/XiaomiMiMo/MiMo-Code",
+                "package_name": "@mimo-ai/cli",
+                "package_version": "0.1.7",
+                "maintainer": "Xiaomi MiMo",
+                "license": "MIT",
+                "description": "MiMo Code headless run integration",
+                "experimental": True,
+                "supported_platforms": ["linux", "darwin", "windows"],
+            },
+            "warnings": [
+                "Runs with Attempt-private XDG directories; global MiMoCode auth, memory and skills are not inherited."
+            ],
+        }
+    )
 
 
 def _legacy_specs(settings: Any) -> tuple[AgentSpec, ...]:

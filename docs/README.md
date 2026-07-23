@@ -15,8 +15,9 @@ Every comparison run captures three things:
 
 ## Baselines
 
-**Claude Code** and **Codex** ship as reference adapters, driven via their
-CLI in subprocess + MCP stdio mode — no vendored SDKs, no special access.
+**Claude Code**, **Codex**, **Kimi Code**, **MiMo Code** and **DeerFlow** ship
+as built-in integrations. They use their native CLI or pinned runner behind
+the common adapter contract — no special model access.
 Anything else — your own agent, a research prototype, an internal tool —
 plugs in through the same `AgentAdapter` interface, either by writing one
 small Python file or, for CLI-based agents, through pure YAML config (see
@@ -53,6 +54,6 @@ Python 3.11+ / FastAPI / SQLite / uv (backend) — React + Vite + TypeScript
 ./start.sh
 ```
 
-Open the frontend, pick the `order-desk` environment, select `claude-code`
-and/or `codex`, and run. Both CLIs must be installed and on `PATH` for their
-respective adapters to report as available.
+Open the frontend, pick the `order-desk` environment, select one or more
+installed Agents, and run. A built-in Agent reports as available only when its
+CLI or runner is installed on `PATH` at a supported version.

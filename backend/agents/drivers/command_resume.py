@@ -105,8 +105,8 @@ class CommandResumeDriver:
                 "command-resume does not implement interactive answer turns"
             )
         send_turns = conversation.send_message_turns
-        if len(send_turns) < 2:
-            raise CommandResumeDriverError("command-resume requires at least two message turns")
+        if not send_turns:
+            raise CommandResumeDriverError("command-resume requires at least one message turn")
 
         base = render_task_prompt(task)
         prepared: list[CommandTurnPlan] = []

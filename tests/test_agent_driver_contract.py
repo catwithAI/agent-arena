@@ -173,6 +173,19 @@ def test_command_resume_builds_explicit_three_turn_plans(tmp_path):
     assert "public" not in plan.turns[1].prompt.text
 
 
+def test_command_resume_also_builds_a_single_turn_plan(tmp_path):
+    plan = CommandResumeDriver().prepare(
+        spec=_resume_spec(),
+        task=_task(),
+        attempt_workspace=tmp_path / "workspace",
+        project_path=tmp_path / "project",
+        attempt_private=tmp_path / "private",
+    )
+
+    assert len(plan.turns) == 1
+    assert plan.render_turn(0).argv[:2] == ("fixture", "--prompt")
+
+
 def test_command_resume_refuses_missing_multiple_or_implicit_latest_sessions(tmp_path):
     plan = _prepare_resume(tmp_path)
     with pytest.raises(CommandResumeDriverError, match="did not yield"):
