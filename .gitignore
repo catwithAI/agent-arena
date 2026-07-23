@@ -7,6 +7,7 @@ __pycache__/
 
 # local config with real endpoints / API keys — never commit
 arena.yaml
+experiment.yaml
 .env
 
 # local-only notes, never committed
