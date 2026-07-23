@@ -149,6 +149,8 @@ def test_profile_and_existing_adapters_are_built_through_same_registry():
         "claude-code",
         "codex",
         "deerflow",
+        "kimi-code",
+        "mimo-code",
         "fake-profile",
     )
     assert isinstance(registry.resolve("fake-profile").build_adapter(), ProfileRuntimeAdapter)

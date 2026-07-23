@@ -3,8 +3,9 @@
 [English](README.md)
 
 一个开源的 agent 评测框架，用同一批任务、同一套工具、同一套评分标准，
-公平地比较不同的 coding agent。内置 **Claude Code** 和 **Codex** 作为标杆
-参照实现，同时提供开放的扩展点，可以接入*任意*其他 agent——CLI 类 agent
+公平地比较不同的 coding agent。内置 **Claude Code**、**Codex**、**Kimi Code**、
+**MiMo Code** 和 **DeerFlow** 参照实现，同时提供开放的扩展点，可以接入
+*任意*其他 agent——CLI 类 agent
 只需写配置即可接入，也可以写一个小的 Python adapter 获得完全控制权。
 
 每次对比评测都会采集三件事：执行过程（工具调用、错误、耗时）、思考过程
@@ -26,7 +27,8 @@
 后端/前端的参数见 `./start.sh --help`。
 
 打开前端（默认 `http://127.0.0.1:5173`），选择一个评测环境，勾选已安装
-的 agent（`claude-code`/`codex` 需要在 `PATH` 中），然后运行。
+的 agent（对应的 `claude`、`codex`、`kimi`、`mimo` 或 DeerFlow runner
+需要在 `PATH` 中），然后运行。
 
 如果要让 claude-code/codex 走第三方 model provider（见
 `arena.yaml.example` 里的 `model_providers`），启动后端前请确保对应的

@@ -4,7 +4,8 @@
 
 An open benchmark harness for comparing coding agents on the same tasks —
 same prompt, same tools, same scoring. Ships with reference adapters for
-**Claude Code** and **Codex** as baselines, plus an extension point for
+**Claude Code**, **Codex**, **Kimi Code**, **MiMo Code** and **DeerFlow** as
+built-in integrations, plus extension points for
 plugging in *any* other agent — config-only for CLI-based agents, or a
 small Python adapter for full control.
 
@@ -31,8 +32,8 @@ on first run. Use `./start.sh --help` for port overrides and backend/frontend-on
 modes.
 
 Open the frontend (default `http://127.0.0.1:5173`), pick an environment,
-select the agents you have installed (`claude-code`/`codex` must be on
-`PATH`), and run.
+select the agents you have installed (`claude`, `codex`, `kimi`, `mimo`, or
+the DeerFlow runner must be on `PATH`), and run.
 
 To route claude-code/codex through a third-party model provider (see
 `model_providers` in `arena.yaml.example`), make sure its API key is

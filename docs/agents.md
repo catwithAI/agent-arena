@@ -1,8 +1,9 @@
 # Plugging in an agent
 
-agent-arena ships with reference adapters for **Claude Code**, **Codex** and
-the pinned **DeerFlow 2** integration, plus registry-backed extension points
-for CLI profiles, ACP, trusted Python plugins and remote services.
+agent-arena ships with reference adapters for **Claude Code**, **Codex**,
+**Kimi Code**, **MiMo Code** and the pinned **DeerFlow 2** integration, plus
+registry-backed extension points for CLI profiles, ACP, trusted Python plugins
+and remote services.
 
 Both reference adapters preserve each agent's full native capability set
 (WebSearch, subagent/task delegation, skills, slash commands, whatever the
@@ -108,6 +109,56 @@ The current integration supports its verified single-turn runner and local
 sandbox event stream. Lane MCP, cross-Attempt resume and observable child Agent
 identity remain unsupported. See
 [the pinned spike](specs/scalable_agent_integration/deerflow-spike.md).
+
+## Built-in (experimental): Kimi Code
+
+The `kimi-code` descriptor uses Kimi Code CLI 0.29 or newer through the shared
+local profile runtime:
+
+```text
+kimi -p "<prompt>" --output-format stream-json \
+  [-m <model>] [--mcp-config-file <generated mcp.json>]
+```
+
+- Structured JSONL is mapped into the common event/final-text contract.
+- Multi-turn scenarios resume only the explicit `session_id` emitted by the
+  first turn; the adapter never selects a "latest" session.
+- Declared scenario MCP servers use Kimi's `mcpServers` JSON-file dialect.
+- The CLI receives an Attempt-private home, so global Kimi login, sessions,
+  skills, plugins and configuration are not inherited. Supply credentials by
+  environment. At minimum, set `KIMI_MODEL_NAME` and `KIMI_MODEL_API_KEY`;
+  optional `KIMI_MODEL_*` variables select the endpoint and provider protocol.
+  When explicitly overriding the arena model, use a Kimi config alias available
+  inside the isolated runtime (the environment-defined alias is
+  `__kimi_env_model__`).
+
+Install Kimi Code following the
+[official repository](https://github.com/MoonshotAI/kimi-code) and ensure
+`kimi` is on `PATH`.
+
+## Built-in (experimental): MiMo Code
+
+The `mimo-code` descriptor uses MiMo Code CLI 0.1.7 or newer through the same
+profile runtime:
+
+```text
+mimo run --format json --dangerously-skip-permissions \
+  [--model <provider/model>] "<prompt>"
+```
+
+- JSON events expose final text, reasoning, tool activity, aggregate usage and
+  an explicit `sessionID` used for safe multi-turn resume.
+- Runs use Attempt-private HOME/XDG directories and do not inherit global
+  MiMoCode authentication, memory, skills or sessions. `MIMOCODE_AUTH_CONTENT`
+  may be supplied by an administrator; MiMo Auto can run without login when
+  the installed release makes that channel available.
+- Lane MCP injection is currently marked unsupported for this headless CLI
+  path; native MiMoCode MCP support is not claimed until its per-run injection
+  lifecycle is validated.
+
+Install MiMo Code following the
+[official repository](https://github.com/XiaomiMiMo/MiMo-Code) and ensure
+`mimo` is on `PATH`.
 
 ## Registry-backed Agent configuration
 

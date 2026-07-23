@@ -336,11 +336,18 @@ class ProfileRuntimeAdapter:
                     )
                     break
                 if index == 0:
-                    try:
-                        session_id = plan.resolve_session([parsed.session_id])
-                    except CommandResumeDriverError as exc:
-                        terminal_error = ("cli_error", "agent_session_invalid", str(exc))
-                        break
+                    if len(plan.turns) > 1:
+                        try:
+                            session_id = plan.resolve_session([parsed.session_id])
+                        except CommandResumeDriverError as exc:
+                            terminal_error = ("cli_error", "agent_session_invalid", str(exc))
+                            break
+                    elif parsed.session_id is not None:
+                        try:
+                            session_id = plan.resolve_session([parsed.session_id])
+                        except CommandResumeDriverError as exc:
+                            terminal_error = ("cli_error", "agent_session_invalid", str(exc))
+                            break
                 elif parsed.session_id is not None and parsed.session_id != session_id:
                     terminal_error = (
                         "cli_error",
@@ -348,7 +355,8 @@ class ProfileRuntimeAdapter:
                         f"resume returned session {parsed.session_id!r}, expected {session_id!r}",
                     )
                     break
-                sessions.append({"turn_id": turn.turn_id, "session_id": session_id})
+                if session_id is not None:
+                    sessions.append({"turn_id": turn.turn_id, "session_id": session_id})
         except asyncio.CancelledError:
             manifest.finalize(
                 effective_model=None,
