@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from backend.env_loader import (
+    ENV_CATEGORIES,
     EnvLoadError,
     _extract_binary_candidates,
     check_name_consistency,
@@ -88,7 +89,12 @@ def _make_env(tmp_path: Path, task: dict) -> Path:
     env_dir = tmp_path / "lint-target"
     (env_dir / "tasks").mkdir(parents=True)
     (env_dir / "meta.yaml").write_text(
-        'name: lint-target\nschema_version: "1.0"\n', encoding="utf-8"
+        'name: lint-target\n'
+        'schema_version: "1.0"\n'
+        'category: baseline\n'
+        'test_focus: "Basic capability test."\n'
+        'description: "Temporary environment used by lint tests."\n',
+        encoding="utf-8",
     )
     (env_dir / "tasks" / "t1.json").write_text(
         json.dumps(task, ensure_ascii=False), encoding="utf-8"
@@ -138,9 +144,54 @@ def test_lint_passes_valid_env(tmp_path):
 
 def test_lint_missing_schema_version(tmp_path):
     env_dir = _make_env(tmp_path, {"id": "t", "prompt": "p"})
-    (env_dir / "meta.yaml").write_text("name: lint-target\n", encoding="utf-8")
+    (env_dir / "meta.yaml").write_text(
+        "name: lint-target\n"
+        "category: baseline\n"
+        "test_focus: Basic capability test.\n"
+        "description: Temporary environment used by lint tests.\n",
+        encoding="utf-8",
+    )
     rc, out = _run_lint(env_dir)
     assert rc == 1 and "schema_version" in out
+
+
+def test_environment_category_taxonomy_is_stable():
+    assert ENV_CATEGORIES == {
+        "general-assistant",
+        "office-productivity",
+        "real-skill",
+        "complex-workflow",
+        "coding",
+        "agent-system",
+        "safety-hitl",
+        "baseline",
+    }
+
+
+def test_lint_rejects_missing_scenario_metadata(tmp_path):
+    env_dir = _make_env(tmp_path, {"id": "t", "prompt": "p"})
+    meta_path = env_dir / "meta.yaml"
+    meta_path.write_text(
+        meta_path.read_text(encoding="utf-8").replace(
+            'test_focus: "Basic capability test."\n', ""
+        ),
+        encoding="utf-8",
+    )
+    rc, out = _run_lint(env_dir)
+    assert rc == 1 and "test_focus" in out
+
+
+def test_lint_rejects_unknown_category(tmp_path):
+    env_dir = _make_env(tmp_path, {"id": "t", "prompt": "p"})
+    meta_path = env_dir / "meta.yaml"
+    meta_path.write_text(
+        meta_path.read_text(encoding="utf-8").replace(
+            "category: baseline", "category: one-off-category"
+        ),
+        encoding="utf-8",
+    )
+    rc, out = _run_lint(env_dir)
+    assert rc == 1 and "category" in out
 
 
 def test_lint_missing_meta(tmp_path):

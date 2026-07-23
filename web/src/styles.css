@@ -1852,3 +1852,48 @@ tbody tr:hover {
   border-color: var(--phosphor);
   color: var(--phosphor);
 }
+
+/* ── scenario capability groups ── */
+
+.scenario-group {
+  margin-top: 2rem;
+}
+
+.scenario-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+  margin-bottom: 0.8rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--border-bright);
+  font-family: var(--mono);
+}
+
+.scenario-group-head h2 {
+  margin: 0;
+  color: var(--phosphor);
+  font-size: 1rem;
+}
+
+.scenario-group-head .soft {
+  flex: 1;
+  font-size: 0.76rem;
+}
+
+.scenario-group-head b {
+  color: var(--amber);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .scenario-group-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .scenario-group-head .soft {
+    flex-basis: 100%;
+    order: 3;
+  }
+}

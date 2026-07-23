@@ -1,7 +1,7 @@
 name: context-compaction-benchmark
 schema_version: "1.0"
 type: context-compaction
-category: multi-turn-retention
+category: agent-system
 test_focus: "多轮/子 agent 上下文压缩下的信息保真度（retention）与压缩可观测性诊断。"
 description: >
   标准压缩评测环境（context_compaction_evaluation C5-3）。用固定 seed 确定性生成
