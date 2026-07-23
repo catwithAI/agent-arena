@@ -1,6 +1,8 @@
 schema_version: "1.0"
 name: ad-placement
 type: coding
+category: coding
+test_focus: "纯编程优化题：在固定版面中选择高价值广告组合，考察 C++17 实现、组合优化、约束满足以及面向隐藏用例的稳健性。"
 description: AtCoder 广告投放优化题批量评测环境。被测模型提交 C++17 代码，scorer 编译后在固定评测用例上运行并计分。
 pass_threshold: 1
 

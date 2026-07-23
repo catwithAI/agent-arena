@@ -1,7 +1,7 @@
 schema_version: "1.0"
 name: gdpval-prepaid-amortization-db
 type: coding
-category: hallucination-control
+category: office-productivity
 test_focus: "GDPval 多文件会计任务的事实提取、跨文件核对与幻觉控制"
 description: "基于官方 GDPval Aurisic prepaid amortization task；Agent 直接编辑最终 SQLite 状态，评分不依赖 LLM judge。"
 pass_threshold: 70

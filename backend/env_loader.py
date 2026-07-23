@@ -41,6 +41,20 @@ from lane.env_api import RegisteredTool, clear_current_registry, get_current_reg
 
 logger = logging.getLogger(__name__)
 
+# Stable top-level capability taxonomy used by environment metadata and the
+# scenarios page.  Domain names and benchmark families belong in `type`,
+# `description`, or future tags instead of becoming one-off categories.
+ENV_CATEGORIES = frozenset({
+    "general-assistant",
+    "office-productivity",
+    "real-skill",
+    "complex-workflow",
+    "coding",
+    "agent-system",
+    "safety-hitl",
+    "baseline",
+})
+
 
 class EnvLoadError(RuntimeError):
     def __init__(self, env_name: str, stage: str, detail: str) -> None:

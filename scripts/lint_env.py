@@ -30,7 +30,12 @@ import yaml
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from backend.env_loader import EnvLoadError, check_name_consistency, normalize_task  # noqa: E402
+from backend.env_loader import (  # noqa: E402
+    ENV_CATEGORIES,
+    EnvLoadError,
+    check_name_consistency,
+    normalize_task,
+)
 
 
 def lint_env(env_dir: Path) -> list[str]:
@@ -52,6 +57,16 @@ def lint_env(env_dir: Path) -> list[str]:
 
     if "schema_version" not in meta:
         errors.append("meta.yaml missing schema_version")
+
+    for field_name in ("description", "test_focus"):
+        value = meta.get(field_name)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"meta.yaml missing non-empty {field_name}")
+
+    category = meta.get("category")
+    if category not in ENV_CATEGORIES:
+        choices = ", ".join(sorted(ENV_CATEGORIES))
+        errors.append(f"meta.yaml category must be one of: {choices}")
 
     tasks_dir = env_dir / "tasks"
     task_files = sorted(tasks_dir.glob("*.json")) if tasks_dir.is_dir() else []

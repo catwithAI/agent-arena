@@ -1,9 +1,9 @@
 schema_version: "1.0"
 name: ppt-visual-repair
 type: skill
-category: document-design-taste
+category: office-productivity
 test_focus: "PPT 可用性 + 视觉审美双轴评测：先检查无遮挡、内容/对象/页面完整性，再评估视觉层级、构图、间距、排版、一致性和整体人类偏好。"
-description: PPT usability and human-taste alignment — enforce objective presentation usability, then judge mature human design preferences.
+description: 修复被破坏的演示文稿，在保留内容与对象的前提下恢复可读性，并通过独立视觉评审检查层级、构图、间距、排版和整体设计成熟度。
 pass_threshold: 70
 
 # 运行前置（见 docs/env-prerequisites.md）

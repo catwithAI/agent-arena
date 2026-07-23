@@ -1,7 +1,7 @@
 schema_version: "1.0"
 name: gdpval-prepaid-amortization-official
 type: coding
-category: gdpval-control
+category: office-productivity
 test_focus: "通过独立 LLM judge 按 GDPval 官方 rubric 逐项评估 Excel 交付物"
 description: "保留官方任务、源材料、专家参考和完整 rubric；Judge 调用 Anthropic API 检查 Agent workbook 并逐项给分。"
 pass_threshold: 70

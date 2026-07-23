@@ -17,6 +17,27 @@ envs/<name>/
 
 ## `meta.yaml`
 
+Every environment must provide three display fields:
+
+- `category`: one stable top-level capability category from the table below.
+- `test_focus`: one sentence describing the capability, constraints, and
+  scoring focus.
+- `description`: the task background, expected artifacts, and scoring method.
+
+Keep the top-level taxonomy small. Industry, discipline, and benchmark family
+belong in `type`, the description, or future tags.
+
+| `category` | Display name | Scope |
+|---|---|---|
+| `general-assistant` | General assistant | Search, file reading, multimodal understanding, open-ended problem solving |
+| `office-productivity` | Office and content | Spreadsheets, accounting materials, presentations, multi-source business work |
+| `real-skill` | Real-world skill | Deterministic chains backed by external business skills |
+| `complex-workflow` | Complex workflow | Multi-step tool orchestration, planning, artifacts, and recovery |
+| `coding` | Coding and algorithms | Implementation, optimization, static analysis, and hidden tests |
+| `agent-system` | Agent systems | Multi-turn memory, compaction, subagents, and observability |
+| `safety-hitl` | Safety and HITL | Confirmation and safe alternatives before high-consequence actions |
+| `baseline` | Baseline constraints | Basic tool use and explicit user-constraint compliance |
+
 ```yaml
 name: my-env
 type: skill              # skill (has tools) | coding (submission-only)
