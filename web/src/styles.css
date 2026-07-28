@@ -391,6 +391,10 @@ button.secondary {
   border: 1px solid var(--border);
 }
 
+.chan-grid > .chan-cell {
+  margin: 0;
+}
+
 .chan-cell {
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
