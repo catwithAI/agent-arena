@@ -6,9 +6,10 @@ integration, plus
 registry-backed extension points for CLI profiles, ACP, trusted Python plugins
 and remote services.
 
-Both reference adapters preserve each agent's full native capability set
-(WebSearch, subagent/task delegation, skills, slash commands, whatever the
-CLI ships with). Adapters only isolate the *host's* local state — see
+The built-in integrations preserve each agent's verified native capabilities
+(such as WebSearch, subagent/task delegation, skills or slash commands where
+the integration supports them). Adapters isolate the *host's* local state and
+publish unsupported capabilities explicitly — see
 [Fairness notes](#fairness-notes) below.
 
 ## Built-in: Claude Code
@@ -46,7 +47,7 @@ claude -p "<prompt>" --output-format stream-json --verbose \
 ```
 codex exec --json --skip-git-repo-check --ephemeral --ignore-rules \
   --dangerously-bypass-approvals-and-sandbox \
-  -C <attempt_dir> -o <final_message_path> \
+  -C <skill_workspace> -o <final_message_path> \
   [-c mcp_servers.<name>.command=... ...] [-c model_providers.*...] \
   "<prompt>"
 ```
@@ -209,9 +210,12 @@ process and are trusted code, not a sandbox. Start from the
 
 ## Bringing your own agent
 
-Two ways in, from least to most control:
+For new integrations, prefer the versioned `agents.profiles`, `agents.acp`,
+`agents.remote`, or `agents.python_plugins` entries described above. The two
+implementation paths below remain useful for legacy config-only CLIs and for
+authors who need framework-wrapped Python code.
 
-### 1. Config-only, via `CustomCliAdapter`
+### Legacy config-only CLI, via `CustomCliAdapter`
 
 If your agent is a CLI that takes a prompt and prints output, no Python
 required — describe it in `arena.yaml`:
@@ -233,11 +237,11 @@ custom_agents:
     # mcp_config_flag: "--mcp-config"
 ```
 
-The agent then shows up as `"my-agent"` in `POST /runs`'s `agents` list and
+The agent then shows up as `"my-agent"` in `POST /api/runs`'s `agents` list and
 in the frontend's agent picker, exactly like `claude-code`/`codex`. See
 `backend/adapters/custom_cli.py` for the full field reference.
 
-### 2. A framework-wrapped Python plugin
+### A framework-wrapped Python plugin
 
 Implement the small Python plugin contract:
 
@@ -274,14 +278,14 @@ What adapters *do* normalize:
   `prompt_context()` helper (`backend/adapters/base.py`) so agents see
   identically-shaped input, and no adapter hardcodes a preferred solving
   method ("you must use tool X") into the prompt.
-- **Host isolation** — `CLAUDE_CONFIG_DIR`/`HOME` (Claude Code) and
-  `CODEX_HOME` (Codex) point at a clean, per-attempt directory so a run
-  never inherits whoever operates the box's personal global config. This is
-  about not leaking private local state into results, not about limiting
-  what the agent can do.
-- **Attempt isolation** — each attempt gets its own working directory,
-  session token, and env server session; nothing about one attempt is
-  visible to another, even within the same run.
+- **Host isolation** — Claude Code and Codex use Attempt-private HOME/config
+  roots; Kimi Code, OpenCode and MiMo Code likewise receive private
+  HOME/XDG/Agent-specific config and session locations. A run never inherits
+  whoever operates the box's personal global Agent state. This is about not
+  leaking private local state into results, not about limiting capabilities.
+- **Attempt isolation** — each attempt gets its own `skill_workspace`, private
+  runtime/control directories, session token and env server session; nothing
+  about one attempt is visible to another, even within the same run.
 
 What adapters do *not* do: they don't disable an agent's built-in tools,
 skills, or task-decomposition ability to make agents "comparable," and they
