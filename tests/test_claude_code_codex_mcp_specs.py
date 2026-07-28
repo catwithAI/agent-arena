@@ -44,6 +44,7 @@ def _cc_mcp() -> McpServerSpec:
         name="lane-demo-env", command="uv",
         args=("run", "--project", ".", "python", "envs/demo-env/mcp_server.py"),
         cwd="/tmp/lane",
+        env={"LANE_WORKSPACE": "/tmp/lane/data/attempts/att/skill_workspace"},
     )
 
 
@@ -51,6 +52,7 @@ def _codex_mcp() -> McpServerSpec:
     return McpServerSpec(
         name="scene-tools", command="uv",
         args=("run", "python", "tools/scene_mcp.py"), cwd="/tmp/lane",
+        env={"LANE_WORKSPACE": "/tmp/lane/data/attempts/att/skill_workspace"},
     )
 
 
@@ -119,6 +121,7 @@ async def test_claude_code_writes_config_only_for_declared_server(tmp_path):
     assert server["command"] == "uv"
     assert server["cwd"] == "/tmp/lane"
     assert server["env"]["LANE_SESSION_TOKEN"] == task.session_token
+    assert server["env"]["LANE_WORKSPACE"].endswith("/skill_workspace")
 
 
 async def test_claude_code_isolates_home_per_attempt(tmp_path):
@@ -171,6 +174,7 @@ async def test_codex_declared_mcp_server_configured_and_token_off_argv(tmp_path)
     assert "mcp_servers.scene-tools.command" in joined
     assert secret not in joined
     assert spawn.call_args.kwargs["env"]["LANE_SESSION_TOKEN"] == secret
+    assert spawn.call_args.kwargs["env"]["LANE_WORKSPACE"].endswith("/skill_workspace")
 
     config_path = tmp_path / "attempts" / task.attempt_id / "codex_mcp_config.json"
     config = json.loads(config_path.read_text())

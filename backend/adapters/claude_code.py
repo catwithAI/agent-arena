@@ -581,6 +581,7 @@ class ClaudeCodeAdapter:
                 "command": command,
                 "args": args,
                 "env": {
+                    **spec.env,
                     "LANE_ATTEMPT_ID": task.attempt_id,
                     "LANE_SESSION_TOKEN": task.session_token,
                     "LANE_BASE_URL": task.env_base_url,

@@ -266,6 +266,7 @@ class CustomCliAdapter:
                         f"{self.project_path}/envs/{task.env_name}/mcp_server.py",
                     ],
                     "env": {
+                        **(task.mcp_servers[0].env if task.mcp_servers else {}),
                         "LANE_ATTEMPT_ID": task.attempt_id,
                         "LANE_SESSION_TOKEN": task.session_token,
                         "LANE_BASE_URL": task.env_base_url,

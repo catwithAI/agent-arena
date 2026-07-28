@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("lane-ad-placement")
+
+
+def _workspace() -> Path:
+    """Return the Agent workspace, not this MCP subprocess's project cwd."""
+    configured = os.environ.get("LANE_WORKSPACE")
+    return Path(configured).resolve() if configured else Path.cwd()
 
 
 @mcp.tool()
@@ -30,12 +37,12 @@ def problem_summary() -> dict:
 @mcp.tool()
 def workspace_status() -> dict:
     """Report whether expected local submission files exist."""
-    cwd = Path.cwd()
+    workspace = _workspace()
     files = {}
     for name in ("solution.cpp", "Makefile", "README.md"):
-        p = cwd / name
+        p = workspace / name
         files[name] = {"exists": p.exists(), "size": p.stat().st_size if p.exists() else 0}
-    return {"cwd": str(cwd), "files": files}
+    return {"cwd": str(workspace), "files": files}
 
 
 if __name__ == "__main__":

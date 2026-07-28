@@ -322,9 +322,11 @@ class SshClaudeCodeAdapter:
                     "command": REMOTE_MCP_PYTHON,
                     "args": [f"{remote_dir}/mcp_server.py"],
                     "env": {
+                        **spec.env,
                         "LANE_ATTEMPT_ID": task.attempt_id,
                         "LANE_SESSION_TOKEN": task.session_token,
                         "LANE_BASE_URL": task.env_base_url,
+                        "LANE_WORKSPACE": f"{remote_dir}/skill_workspace",
                     },
                 }
             }

@@ -138,7 +138,10 @@ async def dispatch(
         return
 
     try:
-        mcp_servers = _mcp_server_specs(env)
+        mcp_servers = _mcp_server_specs(
+            env,
+            workspace=state.data_path / "attempts" / attempt_id / "skill_workspace",
+        )
     except ValueError as exc:
         from .runner import _finalize_no_score
 
@@ -369,7 +372,11 @@ async def dispatch(
     _refresh_run_status(state.db_path, attempt_id)
 
 
-def _mcp_server_specs(env: Any) -> tuple[McpServerSpec, ...]:
+def _mcp_server_specs(
+    env: Any,
+    *,
+    workspace: Path | None = None,
+) -> tuple[McpServerSpec, ...]:
     """Translate a scenario's declared `entrypoints.mcp` into adapter input.
 
     This never infers MCP capability from what happens to sit in the env
@@ -393,12 +400,18 @@ def _mcp_server_specs(env: Any) -> tuple[McpServerSpec, ...]:
             "underscores and hyphens"
         )
     project_root = Path(env.env_dir).resolve().parent.parent
+    server_env = (
+        {"LANE_WORKSPACE": str(Path(workspace).resolve())}
+        if workspace is not None
+        else {}
+    )
     return (
         McpServerSpec(
             name=name,
             command=command[0],
             args=tuple(command[1:]),
             cwd=str(project_root),
+            env=server_env,
         ),
     )
 

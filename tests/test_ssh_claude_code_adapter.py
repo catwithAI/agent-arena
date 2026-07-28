@@ -130,6 +130,9 @@ async def test_mcp_config_uses_remote_venv_python():
     assert server["command"] == "/tmp/lane-mcp-venv/bin/python"
     assert server["env"]["LANE_BASE_URL"] == task.env_base_url
     assert server["env"]["LANE_ATTEMPT_ID"] == task.attempt_id
+    assert server["env"]["LANE_WORKSPACE"].endswith(
+        f"/{task.attempt_id}/skill_workspace"
+    )
 
 
 async def test_happy_path_parses_events(tmp_path):
