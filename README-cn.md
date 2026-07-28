@@ -4,7 +4,7 @@
 
 一个开源的 agent 评测框架，用同一批任务、同一套工具、同一套评分标准，
 公平地比较不同的 coding agent。内置 **Claude Code**、**Codex**、**Kimi Code**、
-**MiMo Code** 和 **DeerFlow** 参照实现，同时提供开放的扩展点，可以接入
+**OpenCode**、**MiMo Code** 和 **DeerFlow** 参照实现，同时提供开放的扩展点，可以接入
 *任意*其他 agent——CLI 类 agent
 只需写配置即可接入，也可以写一个小的 Python adapter 获得完全控制权。
 

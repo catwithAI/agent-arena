@@ -150,6 +150,7 @@ def test_profile_and_existing_adapters_are_built_through_same_registry():
         "codex",
         "deerflow",
         "kimi-code",
+        "opencode",
         "mimo-code",
         "fake-profile",
     )

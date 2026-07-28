@@ -1,7 +1,8 @@
 # Plugging in an agent
 
 agent-arena ships with reference adapters for **Claude Code**, **Codex**,
-**Kimi Code**, **MiMo Code** and the pinned **DeerFlow 2** integration, plus
+**Kimi Code**, **OpenCode**, **MiMo Code** and the pinned **DeerFlow 2**
+integration, plus
 registry-backed extension points for CLI profiles, ACP, trusted Python plugins
 and remote services.
 
@@ -117,13 +118,16 @@ local profile runtime:
 
 ```text
 kimi -p "<prompt>" --output-format stream-json \
-  [-m <model>] [--mcp-config-file <generated mcp.json>]
+  [-m <model>]
 ```
 
 - Structured JSONL is mapped into the common event/final-text contract.
-- Multi-turn scenarios resume only the explicit `session_id` emitted by the
-  first turn; the adapter never selects a "latest" session.
-- Declared scenario MCP servers use Kimi's `mcpServers` JSON-file dialect.
+- Multi-turn scenarios resume with `-r <session_id>` using only the explicit
+  `session.resume_hint` emitted by the first turn; the adapter never selects a
+  "latest" session.
+- Declared scenario MCP servers are written to the Attempt-private
+  `$KIMI_CODE_HOME/mcp.json`; Kimi Code 0.29.1 has no
+  `--mcp-config-file` flag.
 - The CLI receives an Attempt-private home, so global Kimi login, sessions,
   skills, plugins and configuration are not inherited. Supply credentials by
   environment. At minimum, set `KIMI_MODEL_NAME` and `KIMI_MODEL_API_KEY`;
@@ -136,29 +140,36 @@ Install Kimi Code following the
 [official repository](https://github.com/MoonshotAI/kimi-code) and ensure
 `kimi` is on `PATH`.
 
-## Built-in (experimental): MiMo Code
+## Built-in (experimental): OpenCode and MiMo Code
 
-The `mimo-code` descriptor uses MiMo Code CLI 0.1.7 or newer through the same
-profile runtime:
+The `opencode` and `mimo-code` descriptors use OpenCode 1.18.5 and MiMo Code
+0.1.9 or newer through the same profile runtime:
 
 ```text
-mimo run --format json --dangerously-skip-permissions \
+opencode run --format json --auto --dir <skill_workspace> \
+  [--model <provider/model>] "<prompt>"
+mimo run --format json --dangerously-skip-permissions --dir <skill_workspace> \
   [--model <provider/model>] "<prompt>"
 ```
 
 - JSON events expose final text, reasoning, tool activity, aggregate usage and
   an explicit `sessionID` used for safe multi-turn resume.
+- `--dir` is always explicit. Merely setting the subprocess cwd is insufficient
+  because this CLI family can discover a parent project and otherwise read
+  files belonging to another Attempt.
+- Automatic approval is explicit in argv: OpenCode uses `--auto`, while its
+  MiMo fork uses `--dangerously-skip-permissions`. Omitting the family-specific
+  flag causes tool calls to be rejected even though the Agent loop can exit
+  normally.
 - Runs use Attempt-private HOME/XDG directories and do not inherit global
-  MiMoCode authentication, memory, skills or sessions. `MIMOCODE_AUTH_CONTENT`
-  may be supplied by an administrator; MiMo Auto can run without login when
-  the installed release makes that channel available.
-- Lane MCP injection is currently marked unsupported for this headless CLI
-  path; native MiMoCode MCP support is not claimed until its per-run injection
-  lifecycle is validated.
+  authentication, memory, skills or sessions. The family-specific
+  `*_CONFIG_DIR` also points at the Attempt-private runtime directory.
+- Lane MCP injection remains unsupported for these headless profiles until the
+  combined provider/MCP config lifecycle is represented by a verified dialect.
 
-Install MiMo Code following the
-[official repository](https://github.com/XiaomiMiMo/MiMo-Code) and ensure
-`mimo` is on `PATH`.
+Install from the [OpenCode repository](https://github.com/anomalyco/opencode)
+or the [MiMo Code repository](https://github.com/XiaomiMiMo/MiMo-Code), and
+ensure the corresponding executable is on `PATH`.
 
 ## Registry-backed Agent configuration
 

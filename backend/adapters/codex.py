@@ -291,6 +291,8 @@ class CodexAdapter:
         # do we hand the credentials to the subprocess env, so its stdio MCP
         # child (which Codex spawns inheriting its own env) can read them.
         if task.mcp_servers:
+            for server in task.mcp_servers:
+                subprocess_env.update(server.env)
             subprocess_env.update({
                 "LANE_ATTEMPT_ID": task.attempt_id,
                 "LANE_SESSION_TOKEN": task.session_token,
@@ -634,6 +636,7 @@ class CodexAdapter:
                 "command": command,
                 "args": args,
                 "env": {
+                    **spec.env,
                     "LANE_ATTEMPT_ID": task.attempt_id,
                     "LANE_SESSION_TOKEN": task.session_token,
                     "LANE_BASE_URL": task.env_base_url,

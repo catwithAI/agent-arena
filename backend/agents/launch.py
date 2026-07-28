@@ -108,7 +108,7 @@ def render_launch_plan(
                     f"fallback argv is {_argv_size(argv)} bytes, exceeding limit {maximum}"
                 )
 
-    env, env_redacted = _render_env(launch.env, secrets=secrets)
+    env, env_redacted = _render_env(launch.env, context=context, secrets=secrets)
     plan_hash = _logical_plan_hash(spec, context, effective_prompt_mode=mode)
     return RenderedLaunchPlan(
         argv=argv,
@@ -160,6 +160,8 @@ def _launch_value(name: str, context: LaunchContext) -> Any:
         return context.session_id
     if name == "mcp_config_file":
         return str(context.mcp_config_file.resolve()) if context.mcp_config_file else None
+    if name == "attempt_workspace":
+        return str(context.attempt_workspace.resolve())
     if name.startswith("option."):
         return context.options.get(name[7:])
     raise LaunchPlanError(f"unsupported launch value {name!r}")
@@ -168,6 +170,7 @@ def _launch_value(name: str, context: LaunchContext) -> Any:
 def _render_env(
     configured: Mapping[str, str | EnvironmentValue],
     *,
+    context: LaunchContext,
     secrets: Mapping[str, str] | None,
 ) -> tuple[dict[str, str], dict[str, str]]:
     secret_source = os.environ if secrets is None else secrets
@@ -186,6 +189,14 @@ def _render_env(
                 )
             env[name] = secret
             redacted[name] = "***"
+        elif configured_value.path_ref is not None:
+            path = {
+                "attempt_workspace": context.attempt_workspace,
+                "attempt_private": context.attempt_private,
+                "project": context.project_path,
+            }[configured_value.path_ref]
+            env[name] = str(path.resolve())
+            redacted[name] = f"<{configured_value.path_ref}>"
         else:
             assert configured_value.value is not None
             env[name] = configured_value.value

@@ -6,8 +6,28 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from ...adapters.token_usage import INPUT_KEYS, OUTPUT_KEYS
 from .base import EvidenceSet, ParseDiagnostic, ParseResult, dotted_get
+
+
+_USAGE_FIELDS: dict[str, tuple[str, ...]] = {
+    "input_tokens": (
+        "input_tokens",
+        "prompt_tokens",
+        "inputTokens",
+        "promptTokens",
+        "input",
+    ),
+    "output_tokens": (
+        "output_tokens",
+        "completion_tokens",
+        "outputTokens",
+        "completionTokens",
+        "output",
+    ),
+    "cache_read_tokens": ("cache_read_tokens", "cacheReadTokens", "cache.read"),
+    "cache_write_tokens": ("cache_write_tokens", "cacheWriteTokens", "cache.write"),
+    "reasoning_tokens": ("reasoning_tokens", "reasoningTokens", "reasoning"),
+}
 
 
 class JsonlMappingParser:
@@ -43,10 +63,8 @@ class JsonlMappingParser:
         text_candidates: list[str] = []
         final_candidates: list[str] = []
         session_id: str | None = None
-        input_total = 0
-        output_total = 0
-        input_observed = False
-        output_observed = False
+        usage_totals = {name: 0 for name in _USAGE_FIELDS}
+        usage_observed = {name: False for name in _USAGE_FIELDS}
 
         try:
             file = evidence.stdout_path.open("rb")
@@ -125,15 +143,14 @@ class JsonlMappingParser:
                             )
                         )
                     else:
-                        input_value, input_valid = _token_value(usage, INPUT_KEYS)
-                        output_value, output_valid = _token_value(usage, OUTPUT_KEYS)
-                        if input_valid:
-                            input_observed = True
-                            input_total += input_value
-                        if output_valid:
-                            output_observed = True
-                            output_total += output_value
-                        if not input_valid and not output_valid:
+                        recognized = False
+                        for canonical, keys in _USAGE_FIELDS.items():
+                            value, valid = _token_value(usage, keys)
+                            if valid:
+                                recognized = True
+                                usage_observed[canonical] = True
+                                usage_totals[canonical] += value
+                        if not recognized:
                             diagnostics.append(
                                 ParseDiagnostic(
                                     "jsonl_usage_schema_unknown",
@@ -143,10 +160,11 @@ class JsonlMappingParser:
                             )
 
         usage_result = None
-        if input_observed or output_observed:
+        if any(usage_observed.values()):
             usage_result = {
-                "input_tokens": input_total if input_observed else None,
-                "output_tokens": output_total if output_observed else None,
+                name: usage_totals[name]
+                for name, observed in usage_observed.items()
+                if observed
             }
         final_text = (final_candidates or text_candidates or [None])[-1]
         degraded = bool(diagnostics)
@@ -172,9 +190,9 @@ class JsonlMappingParser:
 
 def _token_value(usage: Mapping[str, Any], keys: tuple[str, ...]) -> tuple[int, bool]:
     for key in keys:
-        if key not in usage:
+        value = dotted_get(usage, key)
+        if value is None:
             continue
-        value = usage[key]
         if isinstance(value, bool):
             return 0, False
         try:

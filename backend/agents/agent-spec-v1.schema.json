@@ -450,6 +450,23 @@
     "EnvironmentValue": {
       "additionalProperties": false,
       "properties": {
+        "path_ref": {
+          "anyOf": [
+            {
+              "enum": [
+                "attempt_workspace",
+                "attempt_private",
+                "project"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path Ref"
+        },
         "secret_ref": {
           "anyOf": [
             {

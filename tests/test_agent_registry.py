@@ -88,6 +88,7 @@ def test_existing_and_legacy_agents_share_the_registry_and_hash_is_stable():
         "codex",
         "deerflow",
         "kimi-code",
+        "opencode",
         "mimo-code",
         "my-agent",
     )

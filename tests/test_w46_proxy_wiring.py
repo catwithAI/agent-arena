@@ -228,6 +228,31 @@ def test_mcp_entrypoint_is_scene_declared_not_inferred(tmp_path: Path):
     assert specs[0].args == ("--stdio",)
 
 
+def test_mcp_entrypoint_receives_explicit_attempt_workspace(tmp_path: Path):
+    from types import SimpleNamespace
+
+    from backend.run_dispatch import _mcp_server_specs
+
+    env = SimpleNamespace(
+        name="demo-env",
+        env_dir=tmp_path / "envs" / "demo-env",
+        meta={
+            "entrypoints": {
+                "mcp": {
+                    "enabled": True,
+                    "transport": "stdio",
+                    "command": ["custom-search-server", "--stdio"],
+                }
+            }
+        },
+    )
+    workspace = tmp_path / "custom-data" / "attempts" / "att-1" / "skill_workspace"
+
+    specs = _mcp_server_specs(env, workspace=workspace)
+
+    assert specs[0].env == {"LANE_WORKSPACE": str(workspace.resolve())}
+
+
 def test_mcp_entrypoint_defaults_name_to_lane_prefixed_env_name(tmp_path: Path):
     from types import SimpleNamespace
 

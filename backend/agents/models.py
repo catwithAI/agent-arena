@@ -17,7 +17,14 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, mod
 
 _SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _ALLOWED_LAUNCH_VALUES = frozenset(
-    {"prompt", "prompt_file", "effective_model", "session_id", "mcp_config_file"}
+    {
+        "prompt",
+        "prompt_file",
+        "effective_model",
+        "session_id",
+        "mcp_config_file",
+        "attempt_workspace",
+    }
 )
 
 AgentErrorCode = Literal[
@@ -80,11 +87,15 @@ class LaunchArgument(StrictModel):
 class EnvironmentValue(StrictModel):
     value: str | None = None
     secret_ref: str | None = None
+    path_ref: Literal["attempt_workspace", "attempt_private", "project"] | None = None
 
     @model_validator(mode="after")
     def exactly_one_source(self) -> "EnvironmentValue":
-        if (self.value is None) == (self.secret_ref is None):
-            raise ValueError("environment value requires exactly one of value or secret_ref")
+        sources = (self.value, self.secret_ref, self.path_ref)
+        if sum(item is not None for item in sources) != 1:
+            raise ValueError(
+                "environment value requires exactly one of value, secret_ref or path_ref"
+            )
         return self
 
 
