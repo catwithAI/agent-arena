@@ -15,8 +15,8 @@ Every comparison run captures three things:
 
 ## Baselines
 
-**Claude Code**, **Codex**, **Kimi Code**, **MiMo Code** and **DeerFlow** ship
-as built-in integrations. They use their native CLI or pinned runner behind
+**Claude Code**, **Codex**, **Kimi Code**, **OpenCode**, **MiMo Code** and
+**DeerFlow** ship as built-in integrations. They use their native CLI or pinned runner behind
 the common adapter contract — no special model access.
 Anything else — your own agent, a research prototype, an internal tool —
 plugs in through the same `AgentAdapter` interface, either by writing one

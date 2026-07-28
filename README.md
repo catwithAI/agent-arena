@@ -4,8 +4,8 @@
 
 An open benchmark harness for comparing coding agents on the same tasks —
 same prompt, same tools, same scoring. Ships with reference adapters for
-**Claude Code**, **Codex**, **Kimi Code**, **MiMo Code** and **DeerFlow** as
-built-in integrations, plus extension points for
+**Claude Code**, **Codex**, **Kimi Code**, **OpenCode**, **MiMo Code** and
+**DeerFlow** as built-in integrations, plus extension points for
 plugging in *any* other agent — config-only for CLI-based agents, or a
 small Python adapter for full control.
 

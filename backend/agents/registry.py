@@ -545,6 +545,7 @@ def _builtin_specs(settings: Any) -> tuple[AgentSpec, ...]:
             }
         ),
         _kimi_code_spec(),
+        _opencode_spec(),
         _mimo_code_spec(),
     ]
     if settings.ssh_claude_code.ssh_host is not None:
@@ -584,27 +585,18 @@ def _kimi_code_spec() -> AgentSpec:
                     "--output-format",
                     "stream-json",
                     {"flag": "-m", "value": "effective_model", "omit_if_none": True},
-                    {
-                        "flag": "--mcp-config-file",
-                        "value": "mcp_config_file",
-                        "omit_if_none": True,
-                    },
                 ],
+                "env": {"KIMI_CODE_HOME": {"path_ref": "attempt_private"}},
             },
             "prompt": {"mode": "arg"},
             "driver": {
                 "kind": "command-resume",
                 "resume_args": [
-                    {"flag": "--session", "value": "session_id"},
+                    {"flag": "-r", "value": "session_id"},
                     {"flag": "-p", "value": "prompt"},
                     "--output-format",
                     "stream-json",
                     {"flag": "-m", "value": "effective_model", "omit_if_none": True},
-                    {
-                        "flag": "--mcp-config-file",
-                        "value": "mcp_config_file",
-                        "omit_if_none": True,
-                    },
                 ],
             },
             "model": {
@@ -616,7 +608,7 @@ def _kimi_code_spec() -> AgentSpec:
                 {"name": "Kimi model name", "env_var": "KIMI_MODEL_NAME"},
                 {"name": "Kimi model API key", "env_var": "KIMI_MODEL_API_KEY"},
             ],
-            "mcp": {"dialect": "json-file", "config_flag": "--mcp-config-file"},
+            "mcp": {"dialect": "json-file"},
             "output": {
                 "parser": "jsonl",
                 "parser_version": "kimi-stream-json-v1",
@@ -635,11 +627,11 @@ def _kimi_code_spec() -> AgentSpec:
                 },
                 "resume_send_message": {
                     "state": "declared",
-                    "basis": "stream-json session.resume_hint plus explicit --session",
+                    "basis": "Kimi Code 0.29.1 stream-json session.resume_hint plus explicit -r",
                 },
                 "mcp": {
                     "state": "declared",
-                    "basis": "official --mcp-config-file mcpServers dialect",
+                    "basis": "Kimi Code 0.29.1 $KIMI_CODE_HOME/mcp.json mcpServers dialect",
                 },
                 "structured_events": "declared",
                 "token_usage": "unsupported",
@@ -678,42 +670,121 @@ def _kimi_code_spec() -> AgentSpec:
     )
 
 
+def _opencode_spec() -> AgentSpec:
+    return _opencode_family_spec(
+        agent_id="opencode",
+        display_name="OpenCode",
+        executable="opencode",
+        env_prefix="OPENCODE",
+        version_constraint=">=1.18.5",
+        auto_argv=("--auto",),
+        permission_mode="agent-auto",
+        auth=(
+            {
+                "name": "OpenCode serialized configuration",
+                "env_var": "OPENCODE_CONFIG_CONTENT",
+                "required": False,
+            },
+        ),
+        homepage="https://opencode.ai/",
+        repository="https://github.com/anomalyco/opencode",
+        package_name="opencode-ai",
+        package_version="1.18.5",
+        maintainer="Anomaly",
+        description="OpenCode headless run integration",
+    )
+
+
 def _mimo_code_spec() -> AgentSpec:
+    return _opencode_family_spec(
+        agent_id="mimo-code",
+        display_name="MiMo Code",
+        executable="mimo",
+        env_prefix="MIMOCODE",
+        version_constraint=">=0.1.9",
+        auto_argv=("--dangerously-skip-permissions",),
+        permission_mode="dangerously-skip-permissions",
+        auth=(
+            {
+                "name": "MiMo serialized authentication",
+                "env_var": "MIMOCODE_AUTH_CONTENT",
+                "required": False,
+            },
+            {
+                "name": "MiMo serialized configuration",
+                "env_var": "MIMOCODE_CONFIG_CONTENT",
+                "required": False,
+            },
+        ),
+        homepage="https://mimo.xiaomi.com/",
+        repository="https://github.com/XiaomiMiMo/MiMo-Code",
+        package_name="@mimo-ai/cli",
+        package_version="0.1.9",
+        maintainer="Xiaomi MiMo",
+        description="MiMo Code headless run integration",
+    )
+
+
+def _opencode_family_spec(
+    *,
+    agent_id: str,
+    display_name: str,
+    executable: str,
+    env_prefix: str,
+    version_constraint: str,
+    auto_argv: tuple[str, ...],
+    permission_mode: str,
+    auth: tuple[dict[str, Any], ...],
+    homepage: str,
+    repository: str,
+    package_name: str,
+    package_version: str,
+    maintainer: str,
+    description: str,
+) -> AgentSpec:
+    common_args: list[Any] = [
+        "run",
+        "--format",
+        "json",
+        *auto_argv,
+        {"flag": "--dir", "value": "attempt_workspace"},
+    ]
+    launch_env: dict[str, Any] = {
+        f"{env_prefix}_CONFIG_DIR": {"path_ref": "attempt_private"},
+    }
+    launch_env[f"{env_prefix}_DISABLE_AUTOUPDATE"] = "1"
     return AgentSpec.model_validate(
         {
             "schema_version": "1",
-            "id": "mimo-code",
-            "display_name": "MiMo Code",
+            "id": agent_id,
+            "display_name": display_name,
             "source": "builtin",
             "transport": "local-cli",
             "implementation": {"kind": "profile-runtime"},
             "availability": {
-                "executable": "mimo",
+                "executable": executable,
                 "version_command": ["{executable}", "--version"],
-                "version_constraint": ">=0.1.7",
+                "version_constraint": version_constraint,
                 "version_scheme": "semver",
             },
             "launch": {
-                "executable": "mimo",
+                "executable": executable,
                 "args": [
-                    "run",
-                    "--format",
-                    "json",
-                    "--dangerously-skip-permissions",
+                    *common_args,
                     {"flag": "--model", "value": "effective_model", "omit_if_none": True},
+                    "--",
                     {"value": "prompt"},
                 ],
+                "env": launch_env,
             },
             "prompt": {"mode": "arg", "arg_fallback": "stdin"},
             "driver": {
                 "kind": "command-resume",
                 "resume_args": [
-                    "run",
-                    "--format",
-                    "json",
-                    "--dangerously-skip-permissions",
+                    *common_args,
                     {"flag": "--session", "value": "session_id"},
                     {"flag": "--model", "value": "effective_model", "omit_if_none": True},
+                    "--",
                     {"value": "prompt"},
                 ],
             },
@@ -722,17 +793,11 @@ def _mimo_code_spec() -> AgentSpec:
                 "flag": "--model",
                 "protocols": ["openai-chat", "agent-cloud"],
             },
-            "auth": [
-                {
-                    "name": "MiMo serialized authentication",
-                    "env_var": "MIMOCODE_AUTH_CONTENT",
-                    "required": False,
-                }
-            ],
+            "auth": auth,
             "mcp": {"dialect": "unsupported"},
             "output": {
                 "parser": "jsonl",
-                "parser_version": "mimo-run-json-v1",
+                "parser_version": "opencode-family-run-json-v1",
                 "config": {
                     "type_field": "type",
                     "text_field": "part.text",
@@ -746,7 +811,7 @@ def _mimo_code_spec() -> AgentSpec:
             "capabilities": {
                 "single_turn": {
                     "state": "declared",
-                    "basis": "MiMo Code 0.1.7 run command contract",
+                    "basis": f"{display_name} {package_version} run command contract",
                 },
                 "resume_send_message": {
                     "state": "declared",
@@ -763,22 +828,22 @@ def _mimo_code_spec() -> AgentSpec:
             "isolation": {
                 "execution_locus": "host",
                 "network_required": "public_internet",
-                "permission_mode": "dangerously-skip-permissions",
+                "permission_mode": permission_mode,
             },
             "metadata": {
-                "homepage": "https://mimo.xiaomi.com/",
-                "installation_url": "https://github.com/XiaomiMiMo/MiMo-Code#quick-start",
-                "repository": "https://github.com/XiaomiMiMo/MiMo-Code",
-                "package_name": "@mimo-ai/cli",
-                "package_version": "0.1.7",
-                "maintainer": "Xiaomi MiMo",
+                "homepage": homepage,
+                "installation_url": repository,
+                "repository": repository,
+                "package_name": package_name,
+                "package_version": package_version,
+                "maintainer": maintainer,
                 "license": "MIT",
-                "description": "MiMo Code headless run integration",
+                "description": description,
                 "experimental": True,
                 "supported_platforms": ["linux", "darwin", "windows"],
             },
             "warnings": [
-                "Runs with Attempt-private XDG directories; global MiMoCode auth, memory and skills are not inherited."
+                f"Runs with Attempt-private {env_prefix}_CONFIG_DIR and XDG directories; global auth, memory and skills are not inherited."
             ],
         }
     )

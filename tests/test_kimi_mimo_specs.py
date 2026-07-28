@@ -56,7 +56,7 @@ def _evidence(tmp_path: Path, records: list[dict]) -> EvidenceSet:
     return EvidenceSet.from_runtime_dir(tmp_path)
 
 
-def test_kimi_code_builtin_uses_print_json_resume_and_mcp(tmp_path: Path):
+def test_kimi_code_builtin_uses_print_json_resume_and_private_home(tmp_path: Path):
     spec, first, resumed = _plans("kimi-code", tmp_path, model="kimi-code/kimi-for-coding")
 
     assert isinstance(
@@ -70,28 +70,50 @@ def test_kimi_code_builtin_uses_print_json_resume_and_mcp(tmp_path: Path):
     }
     assert first.argv[:2] == ("kimi", "-p")
     assert first.argv[first.argv.index("-m") + 1] == "kimi-code/kimi-for-coding"
-    assert first.argv[first.argv.index("--mcp-config-file") + 1].endswith("mcp.json")
-    assert resumed.argv[:3] == ("kimi", "--session", "session-123")
+    assert "--mcp-config-file" not in first.argv
+    assert first.env["KIMI_CODE_HOME"] == str((tmp_path / "private").resolve())
+    assert first.env_redacted["KIMI_CODE_HOME"] == "<attempt_private>"
+    assert resumed.argv[:3] == ("kimi", "-r", "session-123")
     assert "--output-format" in resumed.argv
 
 
-def test_mimo_code_builtin_uses_headless_json_and_explicit_resume(tmp_path: Path):
-    spec, first, resumed = _plans("mimo-code", tmp_path, model="mimo/mimo-v2.5")
+@pytest.mark.parametrize(
+    ("agent_id", "executable", "env_prefix", "auto_flag"),
+    [
+        ("opencode", "opencode", "OPENCODE", "--auto"),
+        (
+            "mimo-code",
+            "mimo",
+            "MIMOCODE",
+            "--dangerously-skip-permissions",
+        ),
+    ],
+)
+def test_opencode_family_uses_headless_json_explicit_workspace_and_resume(
+    tmp_path: Path,
+    agent_id: str,
+    executable: str,
+    env_prefix: str,
+    auto_flag: str,
+):
+    spec, first, resumed = _plans(agent_id, tmp_path, model="gateway/test-model")
 
     assert isinstance(
-        AgentRegistry.from_settings(Settings()).resolve("mimo-code").build_adapter(),
+        AgentRegistry.from_settings(Settings()).resolve(agent_id).build_adapter(),
         ProfileRuntimeAdapter,
     )
     assert spec.isolation.inherit_user_config is False
-    assert first.argv[:5] == (
-        "mimo",
-        "run",
-        "--format",
-        "json",
-        "--dangerously-skip-permissions",
+    assert first.argv[:4] == (executable, "run", "--format", "json")
+    assert auto_flag in first.argv
+    assert first.argv[first.argv.index("--dir") + 1] == str(
+        (tmp_path / "workspace").resolve()
     )
-    assert first.argv[first.argv.index("--model") + 1] == "mimo/mimo-v2.5"
+    assert first.argv[first.argv.index("--model") + 1] == "gateway/test-model"
+    assert first.argv[-2] == "--"
     assert resumed.argv[resumed.argv.index("--session") + 1] == "session-123"
+    assert resumed.argv[-2] == "--"
+    assert first.env[f"{env_prefix}_CONFIG_DIR"] == str((tmp_path / "private").resolve())
+    assert first.env[f"{env_prefix}_DISABLE_AUTOUPDATE"] == "1"
 
 
 @pytest.mark.asyncio
@@ -116,22 +138,38 @@ async def test_kimi_stream_json_mapping_extracts_final_session_and_tools(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_mimo_run_json_mapping_extracts_final_session_thinking_and_usage(tmp_path: Path):
+@pytest.mark.parametrize("agent_id", ["opencode", "mimo-code"])
+async def test_opencode_family_json_mapping_extracts_final_session_thinking_and_usage(
+    tmp_path: Path, agent_id: str
+):
     records = [
         {"type": "reasoning", "sessionID": "mimo-session", "part": {"text": "think"}},
         {"type": "tool_use", "sessionID": "mimo-session", "part": {"tool": "read"}},
         {
             "type": "step_finish",
             "sessionID": "mimo-session",
-            "part": {"tokens": {"input_tokens": 7, "output_tokens": 3}},
+            "part": {
+                "tokens": {
+                    "input": 7,
+                    "output": 3,
+                    "reasoning": 2,
+                    "cache": {"read": 5, "write": 1},
+                }
+            },
         },
         {"type": "text", "sessionID": "mimo-session", "part": {"text": "done"}},
     ]
-    spec = AgentRegistry.from_settings(Settings()).resolve("mimo-code").spec
+    spec = AgentRegistry.from_settings(Settings()).resolve(agent_id).spec
     result = await JsonlMappingParser(**spec.output.config).parse(_evidence(tmp_path, records))
 
     assert result.final_text == "done"
     assert result.session_id == "mimo-session"
-    assert result.usage == {"input_tokens": 7, "output_tokens": 3}
+    assert result.usage == {
+        "input_tokens": 7,
+        "output_tokens": 3,
+        "cache_read_tokens": 5,
+        "cache_write_tokens": 1,
+        "reasoning_tokens": 2,
+    }
     assert len(result.thinking) == 1
     assert len(result.tool_refs) == 1
