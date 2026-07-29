@@ -1,73 +1,67 @@
-# DeerFlow v2 integration spike
+# DeerFlow v2 接入 spike
 
-Date: 2026-07-22
+日期：2026-07-22
 
-This note freezes the evidence boundary used by agent-arena's first DeerFlow
-integration. It does not make the upstream repository a runtime dependency and it
-does not claim capabilities that were only observed in another adapter.
+本文固定 agent-arena 首次接入 DeerFlow 时采用的证据边界。它不会把上游仓库变成
+runtime 依赖，也不会宣称只在其他 adapter 中观察到的能力。
 
-## Pin and installation boundary
+## 固定版本与安装边界
 
-- Official repository: <https://github.com/bytedance/deer-flow>
-- Stable tag: [`v2.0.0`](https://github.com/bytedance/deer-flow/tree/v2.0.0)
-- Commit: `7e7f0410797693cf882594555ba414e0361d4c6f`
-- Python distribution: `deerflow-harness==2.0.0`
-- Required Python: 3.12 or newer, as declared by the pinned harness
+- 官方仓库：<https://github.com/bytedance/deer-flow>
+- 稳定 tag：[`v2.0.0`](https://github.com/bytedance/deer-flow/tree/v2.0.0)
+- Commit：`7e7f0410797693cf882594555ba414e0361d4c6f`
+- Python distribution：`deerflow-harness==2.0.0`
+- Python 要求：3.12+，依据固定版本的
   [`pyproject.toml`](https://github.com/bytedance/deer-flow/blob/v2.0.0/backend/packages/harness/pyproject.toml)
 
-Normal attempts never clone or install DeerFlow. Deployment must preinstall the pinned
-distribution in the Python environment containing `deerflow-arena-runner`. The runner's
-read-only `--probe` checks the distribution version, imports `DeerFlowClient`, and checks
-the constructor and stream signatures before an attempt is accepted.
+普通 Attempt 不会 clone 或安装 DeerFlow。部署必须在包含
+`deerflow-arena-runner` 的 Python 环境中预装固定 distribution。Runner 的只读
+`--probe` 会检查 distribution version、导入 `DeerFlowClient`，并验证 constructor
+与 stream signature；通过后才允许 Attempt。
 
-## Probe matrix
+## Probe 矩阵
 
-| Surface | Pinned evidence | Decision |
-| --- | --- | --- |
-| Embedded API | [`deerflow.client.DeerFlowClient`](https://github.com/bytedance/deer-flow/blob/v2.0.0/backend/packages/harness/deerflow/client.py) exposes explicit config/model and feature arguments plus streaming | **Go:** use a small versioned runner |
-| Model config | Pinned example/config code uses named models and LangChain integration import paths | **Go:** generate one Attempt-private `arena-model` |
-| OpenAI chat | `langchain_openai:ChatOpenAI` | **Go:** supported by golden config fixture |
-| OpenAI Responses | `ChatOpenAI` with `use_responses_api` and `output_version` | **Go:** supported by golden config fixture |
-| Anthropic | `langchain_anthropic:ChatAnthropic` | **Go:** supported by golden config fixture |
-| Other providers | No agent-arena fixture at this pin | **No-go:** reject rather than silently map to OpenAI |
-| Stream events | Client exposes streamed typed events | **Go:** bounded NDJSON plus an independent bounded summary |
-| Local sandbox | Pinned config supports local provider, mounts, and `allow_host_bash` | **Go:** mount only the validated Attempt `skill_workspace` |
-| Subagent | Constructor has an explicit enable switch | **Go for execution:** pass the option; identity coverage remains unsupported |
-| Thinking / plan mode | Constructor has explicit switches | **Go:** pass typed options |
-| Summarization | No stable embedded-client switch was found at this pin | **No-go:** default false; reject `summarize=true` explicitly |
-| Session/resume | A thread ID exists, but durable cross-Attempt resume was not validated | **No-go:** reliable single-turn only |
-| Extension / Lane MCP | Upstream has extension/MCP concepts, but an Attempt-private embedded-client lifecycle and Lane server ownership contract were not validated | **No-go:** `mcp=unsupported`; compatibility preflight rejects MCP tasks |
-| Wire interception | No pinned end-to-end fixture for the embedded client | **No-go:** strict Wire requests are rejected |
-| Provider fallback | Stream content can carry provider failure text without a useful successful result | **Go with guard:** runner converts recognized fallback errors to nonzero exit |
-| Recursion limit | Stream invocation accepts the limit | **Go:** typed bound 1–10,000 and an explainable terminal summary |
+| Surface | 固定证据 | 决策 |
+|---|---|---|
+| Embedded API | [`deerflow.client.DeerFlowClient`](https://github.com/bytedance/deer-flow/blob/v2.0.0/backend/packages/harness/deerflow/client.py) 暴露显式 config/model、feature 参数和 stream | **Go**：使用小型固定版本 runner |
+| Model config | 固定示例/config 使用命名模型与 LangChain integration import path | **Go**：生成 Attempt 私有 `arena-model` |
+| OpenAI chat | `langchain_openai:ChatOpenAI` | **Go**：golden config fixture 覆盖 |
+| OpenAI Responses | 带 `use_responses_api`、`output_version` 的 `ChatOpenAI` | **Go**：golden config fixture 覆盖 |
+| Anthropic | `langchain_anthropic:ChatAnthropic` | **Go**：golden config fixture 覆盖 |
+| 其他 provider | 此固定版本没有 agent-arena fixture | **No-go**：拒绝，不静默映射到 OpenAI |
+| Stream event | Client 暴露带类型的流式 event | **Go**：有界 NDJSON 与独立有界 summary |
+| 本地 sandbox | 固定 config 支持 local provider、mount、`allow_host_bash` | **Go**：只挂载已校验的 `skill_workspace` |
+| Subagent | Constructor 有显式启用开关 | **执行 Go**：透传 option；identity coverage 仍 unsupported |
+| Thinking/plan mode | Constructor 有显式开关 | **Go**：透传强类型 option |
+| Summarization | 未找到稳定 embedded-client 开关 | **No-go**：默认 false，显式拒绝 `summarize=true` |
+| Session/resume | 有 thread ID，但未验证跨 Attempt 持久恢复 | **No-go**：仅可靠单轮 |
+| Extension/Lane MCP | 上游有相关概念，但未验证 Attempt 私有生命周期与 Lane ownership | **No-go**：`mcp=unsupported`，预检拒绝 MCP 任务 |
+| Wire interception | 没有 embedded client 的固定 E2E fixture | **No-go**：拒绝严格 Wire 请求 |
+| Provider fallback | Stream 内容可能携带 provider 失败文本但无有效成功结果 | **带 guard 的 Go**：runner 将已识别 fallback error 转为非零退出 |
+| Recursion limit | Stream 调用接受 limit | **Go**：1–10,000 的强类型边界及可解释终态 summary |
 
-## Security and state boundary
+## 安全与状态边界
 
-Each attempt receives a private DeerFlow project, home, and YAML config beneath
-`.agent-runtime/deerflow`. The generated model config contains only
-`$DEERFLOW_ARENA_MODEL_API_KEY`; the value is supplied in the child environment and is
-redacted from raw logs and the manifest. `HOME`, XDG config/cache, project root, and
-DeerFlow config variables all point at Attempt-private paths.
+每个 Attempt 在 `.agent-runtime/deerflow` 下获得私有 DeerFlow project、home 和 YAML
+config。生成的 model config 只包含 `$DEERFLOW_ARENA_MODEL_API_KEY`；实际值通过子进程
+环境提供，并从 raw log 与 manifest 脱敏。`HOME`、XDG config/cache、project root 和
+DeerFlow config 变量全部指向 Attempt 私有路径。
 
-The workspace bridge accepts only the real `<attempt>/skill_workspace`, rejects a root
-symlink and nested symlinks, and records the host execution locus and effective
-`allow_host_bash` permission. Prompt steering tells DeerFlow to use
-`/mnt/arena-workspace`, but filesystem validation and the generated mount are the
-security boundary.
+Workspace bridge 只接受真实 `<attempt>/skill_workspace`，拒绝根 symlink 和嵌套
+symlink，并记录 host execution locus 与有效 `allow_host_bash` permission。Prompt
+引导 DeerFlow 使用 `/mnt/arena-workspace`，但真正的安全边界是文件系统校验和生成的
+mount。
 
-## Offline reproducibility evidence
+## 离线复现证据
 
-The following fixtures require no model account and contain no upstream secrets:
+以下 fixture 不需要模型账号，也不包含上游 secret：
 
-- `tests/test_deerflow_profile.py`: pin, probe compatibility, auth and MCP no-go preflight.
-- `tests/test_deerflow_config.py`: provider config goldens, private state, workspace traversal
-  and symlink rejection.
-- `tests/test_deerflow_runner.py`: completed/provider/recursion/bad-event and summary bounds.
-- `tests/test_deerflow_parser.py`: offline replay, truncation, usage deduplication and untrusted
-  summary handling.
-- `tests/test_deerflow_adapter.py`: parameterized single/subagent workspace E2E, manifest
-  reconciliation, secret absence, timeout and cancellation process-group cleanup.
+- `tests/test_deerflow_profile.py`：pin、probe compatibility、auth 和 MCP no-go 预检。
+- `tests/test_deerflow_config.py`：provider config golden、私有状态、路径穿越与 symlink 拒绝。
+- `tests/test_deerflow_runner.py`：completed/provider/recursion/bad-event 和 summary 上限。
+- `tests/test_deerflow_parser.py`：离线 replay、截断、usage 去重和不可信 summary。
+- `tests/test_deerflow_adapter.py`：single/subagent workspace E2E、manifest reconciliation、
+  secret 缺失、timeout 与 cancellation process-group cleanup。
 
-These fixtures verify agent-arena's side of the frozen contract. A real-account smoke test
-against the pinned distribution remains an optional deployment check and is intentionally
-not part of default CI.
+这些 fixture 验证固定契约中 agent-arena 一侧。带真实账号、固定 distribution 的 smoke
+test 仍是可选部署检查，不进入默认 CI。

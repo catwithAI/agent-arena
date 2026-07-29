@@ -1,103 +1,76 @@
-# Architecture
+# 架构说明
 
-## Layout
+## 目录结构
 
-```
+```text
 agent-arena/
-├── backend/            # FastAPI app: dispatch, execution, evaluation
-│   ├── agents/           # registry, shared runtimes, transports and plugins
-│   ├── adapters/         # native and legacy compatibility adapters
-│   └── *.py              # main/api/config/db/models/runner/evaluator/...
-├── lane/                # tiny SDK for environment authors (@env_tool etc.)
-├── envs/                # evaluation environments (task defs + tools + scorer)
-├── web/                 # React + Vite + TS frontend
-├── data/                # runtime data (gitignored): sqlite + attempt files
+├── backend/            # FastAPI：调度、执行与评估
+│   ├── agents/         # registry、共享 runtime、transport 与 plugin
+│   ├── adapters/       # 原生 adapter 与旧接口兼容 adapter
+│   └── *.py            # main/api/config/db/models/runner/evaluator/...
+├── lane/               # 面向环境作者的轻量 SDK（@env_tool 等）
+├── envs/               # 评测环境：任务、工具与 scorer
+├── web/                # React + Vite + TypeScript 前端
+├── data/               # 运行数据（gitignored）：SQLite 与 Attempt 文件
 ├── arena.yaml(.example)
 └── pyproject.toml
 ```
 
-## Core concepts
+## 核心概念
 
-`Task` → `Run` → `Attempt` → `Score`.
+`Task` → `Run` → `Attempt` → `Score`。
 
-- **Task**: a prompt plus context/constraints, either loaded from
-  `envs/<name>/tasks/*.json` or created ad hoc from a free-form prompt.
-- **Run**: one comparison — a task dispatched to one or more agents.
-- **Attempt**: one agent's execution of the task. Its isolated container is
-  `data/attempts/<attempt_id>/`; agent-visible files live in the
-  `skill_workspace/` child, alongside private runtime/control data, a session
-  token and traces that remain outside the workspace.
-- **Score**: per-dimension values (0-100) produced by the environment's
-  scorer, aggregated into `score_total` by weight.
+- **Task**：Prompt 及上下文/约束，来自 `envs/<name>/tasks/*.json` 或临时输入。
+- **Run**：一次对比，将同一任务分发给一个或多个 Agent。
+- **Attempt**：某个 Agent 的一次任务执行。隔离容器位于
+  `data/attempts/<attempt_id>/`；Agent 可见文件在 `skill_workspace/` 中，
+  私有 runtime/control 数据、session token 和 trace 位于工作区之外。
+- **Score**：环境 scorer 产生的各维度 0–100 分，按权重聚合为 `score_total`。
 
-## Request flow
+## 请求流程
 
-1. `POST /api/runs` creates a `Task` (if needed), a `Run`, and one `Attempt`
-   per requested agent, then dispatches them concurrently as background
-   tasks (`backend/run_dispatch.py`).
-2. `AgentRegistry` resolves the requested built-in or configured AgentSpec,
-   checks task/model/MCP/conversation compatibility, and constructs the
-   matching profile runtime, ACP/remote transport, Python plugin, or native
-   compatibility adapter. All paths implement the common `AgentAdapter`
-   result contract.
-3. If the scenario's `meta.yaml` declares an `entrypoints.mcp` server (see
-   [environments.md](environments.md)) and the agent chooses to call it, the
-   MCP call forwards to the **attempt server**
-   (`backend/env_attempt_server.py`) via `POST
-   /attempts/{attempt_id}/tools/{tool_name}`, authenticated with a
-   per-attempt bearer token. This is the same HTTP path regardless of which
-   agent is calling — traces line up across agents for free. The MCP process
-   receives the real Attempt workspace as `LANE_WORKSPACE` while its declared
-   command is resolved from the project root. Scenarios that declare no MCP
-   server give the agent no environment tools at all; the framework never
-   fabricates one.
-4. Once the adapter finishes, `backend/runner.py` calls the environment's
-   `scorer.py` (`backend/evaluator.py`), writes scores, and finalizes the
-   attempt's status.
-5. The frontend polls `GET /api/runs/{id}` and `GET
-   /api/runs/{id}/attempts/{id}` to show live progress and, once done, the
-   full transcript/scores/artifacts.
+1. `POST /api/runs` 创建 `Task`（如有必要）、`Run` 和每个 Agent 对应的
+   `Attempt`，随后由 `backend/run_dispatch.py` 并发调度后台任务。
+2. `AgentRegistry` 解析内置或配置的 AgentSpec，检查任务、模型、MCP 和会话能力
+   兼容性，并构造对应的 profile runtime、ACP/remote transport、Python plugin
+   或原生兼容 adapter。所有路径都实现统一的 `AgentAdapter` 结果契约。
+3. 如果场景的 `meta.yaml` 显式声明 `entrypoints.mcp`，且 Agent 选择调用工具，
+   MCP 请求会通过 `backend/env_attempt_server.py` 转发到
+   `POST /attempts/{attempt_id}/tools/{tool_name}`，并使用 Attempt 级 bearer token
+   认证。MCP 进程从项目根目录解析声明命令，同时通过 `LANE_WORKSPACE` 获得真实
+   Attempt 工作区。未声明 MCP 的场景不会获得环境工具，框架不会自动推断或虚构。
+4. Adapter 结束后，`backend/runner.py` 通过 `backend/evaluator.py` 调用环境的
+   `scorer.py`，写入分数并完成 Attempt 状态。
+5. 前端轮询 `GET /api/runs/{id}` 和
+   `GET /api/runs/{id}/attempts/{id}`，展示实时进度及最终对话、分数和产物。
 
-## Isolation
+## 隔离模型
 
-Every attempt has an agent-visible
-`data/attempts/<attempt_id>/skill_workspace/`. Local runtimes use it as the
-process `cwd` (and pass an explicit workspace flag when the CLI requires one),
-so submissions land where scorers expect them. Framework metadata, manifests,
-events and private Agent configuration stay in sibling paths under the Attempt
-root. Nothing is shared between attempts — not even within the same run.
+每个 Attempt 都有独立的
+`data/attempts/<attempt_id>/skill_workspace/`。本地 runtime 将其作为进程
+`cwd`；需要显式工作区参数的 CLI 还会收到对应参数，因此提交产物会落在 scorer
+预期的位置。框架元数据、manifest、event 和私有 Agent 配置保存在 Attempt 根目录下
+的相邻路径中。同一 Run 内的 Attempt 之间也不共享这些状态。
 
-Built-in local integrations point their Agent-specific HOME/config/session
-locations at Attempt-private directories. A run therefore does not pick up the
-operator's global skills, plugins, MCP servers, memories or sessions. This is
-local-state isolation, not a capability restriction — see "Capability
-fairness" below.
+内置本地集成将 Agent 专属的 HOME、配置和 session 位置指向 Attempt 私有目录，
+不会读取操作者全局的 skill、plugin、MCP server、memory 或 session。这是本地状态
+隔离，而不是能力限制。
 
-## Capability fairness
+## 能力公平性
 
-agent-arena compares each agent's **full native capability set**. "Fair"
-means the same task, input materials, time budget, and external-resource
-boundaries — not the same tool set. Faced with the same task, Claude Code
-might reach for WebSearch, Codex might reach for shell/Python, and a
-third-party agent plugged in via `custom_agents` might use whatever it has;
-that difference is itself part of the result, not noise to eliminate.
+agent-arena 比较每个 Agent 已验证的原生能力集合。“公平”指任务、输入材料、时间预算
+和外部资源边界一致，并不要求所有 Agent 使用完全相同的工具。
 
-- Adapters must not disable an agent's native tools, skills, or
-  task-decomposition ability in order to make agents "comparable."
-- Adapters must not hardcode a preferred solving method (MCP, curl, Python,
-  ...) into the prompt.
-- MCP/skill capability is only ever wired up when a scenario's `meta.yaml`
-  explicitly declares it (`entrypoints.mcp`) — the framework wires up
-  exactly what's declared and never infers or fabricates a server.
-- Host-local state (private configs, credentials, plugins) is still
-  isolated so one operator's machine doesn't bias the comparison.
+- Adapter 不应为了“可比”而关闭 Agent 的原生工具、skill 或任务拆解能力。
+- Adapter 不应在 Prompt 中硬编码 MCP、curl、Python 等首选解法。
+- 只有场景 `meta.yaml` 显式声明 `entrypoints.mcp` 时才接入 MCP/skill 能力。
+- 宿主机的私有配置、凭证和 plugin 仍需隔离，避免操作者环境影响结果。
 
-## Extension points
+## 扩展点
 
-- **New agent**: add a strict AgentSpec profile for a regular local CLI, or
-  configure an ACP server, remote service, or trusted Python plugin under
-  `agents` in `arena.yaml`. Legacy `custom_agents` remains available during
-  migration. Implement a focused adapter only when a new runtime contract
-  cannot fit an existing transport — see [agents.md](agents.md).
-- **New environment**: add a directory under `envs/` — see
-  [environments.md](environments.md).
+- **新增 Agent**：普通本地 CLI 使用严格的 AgentSpec profile；也可在
+  `arena.yaml` 的 `agents` 下配置 ACP server、远程服务或受信任的 Python plugin。
+  迁移期间仍支持旧 `custom_agents`。只有现有 transport 无法表达新的 runtime
+  契约时，才新增专用 adapter。详见 [Agent 接入指南](agents.md)。
+- **新增环境**：在 `envs/` 下新增目录。详见
+  [评测环境编写指南](environments.md)。
