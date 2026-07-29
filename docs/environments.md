@@ -72,7 +72,9 @@ entirely), the dispatcher generates no MCP config, starts no capture tap,
 and adds no MCP-related text to the prompt, regardless of what files exist
 on disk. `command` must be the scenario's actual, complete launch command
 (argv list); the adapter runs it verbatim and never tries to guess or
-reconstruct it from `env_name`.
+reconstruct it from `env_name`. It is resolved from the project root, and
+the MCP subprocess receives the real
+`data/attempts/<attempt_id>/skill_workspace` through `LANE_WORKSPACE`.
 
 ## Tools (`core.py`)
 
@@ -102,7 +104,8 @@ applied idempotently on first use.
 A thin MCP stdio wrapper that forwards each tool call to the attempt server
 over HTTP — copy `envs/order-desk/mcp_server.py` and adjust the tool
 signatures to match `core.py`. This file is required whenever `core.py`
-registers tools; it's what Claude Code / Codex actually talk to.
+registers tools; any Agent whose declared capabilities include MCP talks to
+this wrapper through its own supported MCP dialect.
 
 ## Scorer (`scorer.py`)
 

@@ -6,8 +6,8 @@ An open benchmark harness for comparing coding agents on the same tasks —
 same prompt, same tools, same scoring. Ships with reference adapters for
 **Claude Code**, **Codex**, **Kimi Code**, **OpenCode**, **MiMo Code** and
 **DeerFlow** as built-in integrations, plus extension points for
-plugging in *any* other agent — config-only for CLI-based agents, or a
-small Python adapter for full control.
+plugging in *any* other agent through a local CLI profile, ACP server, remote
+service, or trusted Python plugin.
 
 Every comparison run captures execution (tool calls, errors, timing),
 reasoning (thinking traces, where the agent exposes them), and the final
@@ -32,8 +32,9 @@ on first run. Use `./start.sh --help` for port overrides and backend/frontend-on
 modes.
 
 Open the frontend (default `http://127.0.0.1:5173`), pick an environment,
-select the agents you have installed (`claude`, `codex`, `kimi`, `mimo`, or
-the DeerFlow runner must be on `PATH`), and run.
+and select the agents you have installed. The corresponding executable
+(`claude`, `codex`, `kimi`, `opencode`, `mimo`, or
+`deerflow-arena-runner`) must be on `PATH`.
 
 To route claude-code/codex through a third-party model provider (see
 `model_providers` in `arena.yaml.example`), make sure its API key is
@@ -46,10 +47,16 @@ confusing CLI login error.
 
 ## Included environments
 
-- **order-desk** — a tool-using environment: search a mock book catalog and
-  place an order under a budget constraint.
-- **cpp-optimizer** — a pure-coding environment: submit a C++17 solution,
-  scored by compiling and batch-running it against hidden test cases.
+- **order-desk** — constrained tool use against a mock book catalog.
+- **cpp-optimizer** and **ad-placement** — batch-graded C++17 optimization.
+- **apple-incremental-game** — long-horizon Python strategy optimization.
+- **edgebench-juliet** — facts-based C/C++ vulnerability analysis.
+- **context-compaction-benchmark** — multi-turn context retention and
+  compaction observability.
+- **gdpval-prepaid-amortization-db** and
+  **gdpval-prepaid-amortization-official** — multi-file accounting work,
+  scored deterministically or with the official rubric.
+- **ppt-visual-repair** — presentation usability and visual-quality repair.
 
 See [docs/environments.md](docs/environments.md) to add your own.
 

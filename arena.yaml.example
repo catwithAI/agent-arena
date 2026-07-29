@@ -1,5 +1,5 @@
-# agent-lane local config template.
-# Copy to agentlane.yaml (already gitignored) and fill in real values.
+# agent-arena local config template.
+# Copy to arena.yaml (already gitignored) and fill in real values.
 # Environment variables override this file — see the comment on each field.
 
 lane:
@@ -11,8 +11,8 @@ lane:
   # env: LANE_ENVS_PATH
   envs_path: "./envs"
 
-  # Address the agent-facing MCP tool server calls back to. The agent
-  # process (claude/codex CLI subprocess) must be able to reach this URL.
+  # Address the agent-facing MCP tool server calls back to. Any Agent process
+  # with declared MCP support must be able to reach this URL.
   # Same-machine setups can leave this as loopback; if the agent runs in a
   # different network namespace (e.g. a container), point it at whatever
   # address reaches this host from there.
@@ -90,7 +90,7 @@ lane:
 #       supports_model: false
 #       supports_mcp: false
 
-# Any other CLI-based agent, keyed by the agent name used in `POST /runs`.
+# Any other CLI-based agent, keyed by the agent name used in `POST /api/runs`.
 # This is the legacy way to bring your own agent to agent-arena without writing a
 # Python adapter — see backend/adapters/custom_cli.py for the full field
 # reference.

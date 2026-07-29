@@ -5,8 +5,8 @@
 一个开源的 agent 评测框架，用同一批任务、同一套工具、同一套评分标准，
 公平地比较不同的 coding agent。内置 **Claude Code**、**Codex**、**Kimi Code**、
 **OpenCode**、**MiMo Code** 和 **DeerFlow** 参照实现，同时提供开放的扩展点，可以接入
-*任意*其他 agent——CLI 类 agent
-只需写配置即可接入，也可以写一个小的 Python adapter 获得完全控制权。
+*任意*其他 agent——可以配置本地 CLI profile、ACP server 或远程服务，也可以编写
+受信任的 Python plugin 获得完整控制权。
 
 每次对比评测都会采集三件事：执行过程（工具调用、错误、耗时）、思考过程
 （agent 暴露出来的 thinking 轨迹，如果有的话）、最终产物（分数、代码、
@@ -27,8 +27,8 @@
 后端/前端的参数见 `./start.sh --help`。
 
 打开前端（默认 `http://127.0.0.1:5173`），选择一个评测环境，勾选已安装
-的 agent（对应的 `claude`、`codex`、`kimi`、`mimo` 或 DeerFlow runner
-需要在 `PATH` 中），然后运行。
+的 agent，然后运行。对应的 `claude`、`codex`、`kimi`、`opencode`、
+`mimo` 或 `deerflow-arena-runner` 可执行文件必须位于 `PATH` 中。
 
 如果要让 claude-code/codex 走第三方 model provider（见
 `arena.yaml.example` 里的 `model_providers`），启动后端前请确保对应的
@@ -40,10 +40,15 @@ provider 两边都没配置 key，评测会立刻以清晰的 `provider_api_key_
 
 ## 内置评测环境
 
-- **order-desk** —— 工具调用类环境：在预算约束下搜索一个模拟图书目录并
-  下单。
-- **cpp-optimizer** —— 纯编程类环境：提交一份 C++17 解答，通过编译并跑
-  隐藏测试用例批量评分。
+- **order-desk** —— 在预算和日期约束下调用工具完成图书下单。
+- **cpp-optimizer**、**ad-placement** —— 批量评分的 C++17 优化题。
+- **apple-incremental-game** —— 面向长期收益的 Python 策略优化。
+- **edgebench-juliet** —— 基于结构化 facts 的 C/C++ 漏洞分析。
+- **context-compaction-benchmark** —— 多轮上下文保真度与压缩可观测性。
+- **gdpval-prepaid-amortization-db**、
+  **gdpval-prepaid-amortization-official** —— 多文件会计任务，分别使用
+  确定性评分与官方 rubric 评分。
+- **ppt-visual-repair** —— 演示文稿可用性和视觉质量修复。
 
 参见 [docs/environments.md](docs/environments.md) 了解如何新增自己的评测
 环境。

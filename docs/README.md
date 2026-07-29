@@ -19,8 +19,8 @@ Every comparison run captures three things:
 **DeerFlow** ship as built-in integrations. They use their native CLI or pinned runner behind
 the common adapter contract — no special model access.
 Anything else — your own agent, a research prototype, an internal tool —
-plugs in through the same `AgentAdapter` interface, either by writing one
-small Python file or, for CLI-based agents, through pure YAML config (see
+plugs in through the same registry and result contract as a YAML local-CLI
+profile, ACP server, remote service, or trusted Python plugin (see
 [agents.md](agents.md)).
 
 ## How a run works
