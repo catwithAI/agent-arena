@@ -1,54 +1,49 @@
-# ACP v1 transport decision record
+# ACP v1 transport 决策记录
 
-Status: accepted for A7 implementation (2026-07-22).
+状态：A7 实现已接受（2026-07-22）。
 
-## Pin and client boundary
+## 版本固定与 client 边界
 
-Agent Arena pins the stable ACP major protocol `protocolVersion: 1`. ACP v2 is
-currently Draft and is not negotiated. The transport is a small asynchronous
-JSON-RPC 2.0 client over stdio; each UTF-8 message is one newline-delimited JSON
-object. We intentionally do not add the Python SDK as a runtime dependency:
-the required client surface is initialize, session/new, session/prompt,
-session/update, session/request_permission and session/cancel, and keeping that
-surface local makes process cleanup and evidence capture use the arena's shared
-runtime rules.
+Agent Arena 固定稳定版 ACP major protocol `protocolVersion: 1`，不协商仍处于 Draft
+阶段的 ACP v2。Transport 是基于 stdio 的轻量异步 JSON-RPC 2.0 client，每条 UTF-8
+消息是一个换行分隔 JSON object。
 
-One ACP subprocess and session belong to one Attempt. Multi-turn prompts reuse
-that session. Timeout or cancellation sends the session/cancel notification
-before terminating the process group. An agent may emit final updates before
-the prompt response; they remain accepted.
+运行时不额外依赖 Python SDK。所需 client surface 仅包括 `initialize`、
+`session/new`、`session/prompt`、`session/update`、
+`session/request_permission` 和 `session/cancel`。将其保留在项目内，便于进程清理和
+证据采集复用 Arena 的共享 runtime 规则。
 
-## Permission and client capabilities
+一个 ACP 子进程和 session 只属于一个 Attempt，多轮 Prompt 复用该 session。超时或
+取消时，先发送 `session/cancel` notification，再终止 process group。Agent 可以在
+Prompt response 前发出 final update，client 仍会接受。
 
-The client advertises neither filesystem nor terminal capabilities in the
-first release. A permission answer must explicitly select an option ID for the
-specific tool call. If no configured answer matches, the client returns ACP's
-`cancelled` permission outcome and records degraded permission coverage. It
-never guesses an allow option.
+## Permission 与 client capability
 
-## Registry and distribution supply chain
+首版 client 不声明 filesystem 或 terminal capability。Permission answer 必须为指定
+tool call 显式选择 option ID。没有匹配配置时，client 返回 ACP 的 `cancelled`
+permission outcome，并记录 permission coverage 降级；绝不猜测 allow option。
 
-Only stable identifiers of the form `acp:<id>@<version>` resolve. Registry
-documents must use HTTPS, validate against the supported v1 shape, and are
-stored byte-for-byte in a content-addressed cache. The resolved SHA-256 is part
-of the descriptor/run pin. Offline resolution re-hashes the raw cache blob and
-fails closed on a missing reference, a checksum mismatch, duplicate metadata,
-an absent exact version, or schema corruption.
+## Registry 与分发供应链
 
-Registry distribution metadata is not trusted code. Normal runs never download,
-extract, invoke npx/uvx installation, or mutate package state. An administrator
-must preinstall and configure an executable separately. Binary archive URLs and
-checksums remain metadata for that administrative workflow.
+只解析 `acp:<id>@<version>` 形式的稳定 ID。Registry 文档必须使用 HTTPS、通过支持的
+v1 schema 校验，并逐字节存入 content-addressed cache。解析出的 SHA-256 进入
+descriptor/run pin。
 
-## Transcript coverage
+离线解析会重新哈希原始 cache blob；缺少引用、checksum 不匹配、metadata 重复、
+精确版本不存在或 schema 损坏时均 fail closed。
 
-Contract fake servers exercise two transcript shapes: normal single/multi-turn
-updates with thinking/tool/usage events, and permission requests with explicit
-deny or unconfigured cancellation. Separate cases cover protocol mismatch,
-server crash, and timeout cleanup. Real registry agent smoke tests are optional
-and excluded from default CI.
+Registry distribution metadata 不是可信代码。普通 Run 不会下载或解压归档，不会执行
+npx/uvx 安装，也不会修改 package 状态。管理员必须另行预装和配置 executable；
+binary archive URL 与 checksum 只供管理员安装流程参考。
 
-Official references:
+## Transcript 覆盖
+
+契约 fake server 覆盖两类 transcript：带 thinking/tool/usage event 的正常单轮/多轮
+update，以及需要显式 deny 或未配置 cancellation 的 permission request。另有用例覆盖
+protocol mismatch、server crash 和 timeout cleanup。真实 registry Agent smoke test
+为可选项，不进入默认 CI。
+
+官方参考：
 
 - https://agentclientprotocol.com/protocol/v1/overview
 - https://agentclientprotocol.com/protocol/v1/transports

@@ -1,61 +1,58 @@
 # agent-arena
 
-An open benchmark harness for comparing coding agents on the same tasks.
+agent-arena 是一个开放的 coding agent 评测框架，用同一批任务、工具和评分标准，
+帮助用户公平、可重复地比较自己的 Agent 与真实基线，而不是维护公共排行榜。
 
-The goal isn't a public leaderboard — it's giving anyone a way to compare
-*their own* agent against real baselines using a fair, repeatable setup:
-same prompt, same tools, same scoring.
+## 文档语言约定
 
-Every comparison run captures three things:
+项目文档以中文为主，根目录 `README.md` 保留为英文入口。命令、API 路径、配置字段、
+代码标识、错误码和上游专有名词保留原文，避免翻译破坏可执行性或检索能力。
+`envs/**/materials/`、`inputs/` 和 fixture 属于评测输入或复现证据，保持题目固定时的
+原始语言，不按普通项目文档翻译。
 
-1. **Execution** — tool calls, errors, retries, timing.
-2. **Reasoning** — task understanding, planning, decision points, corrections
-   (where the agent exposes it — e.g. Claude Code's `thinking` blocks).
-3. **Final product** — resulting state, code files, test results, a score.
+每次对比运行会采集三类信息：
 
-## Baselines
+1. **执行过程**：工具调用、错误、重试和耗时。
+2. **推理过程**：任务理解、规划、决策和修正（仅限 Agent 实际暴露的内容，例如
+   Claude Code 的 `thinking` block）。
+3. **最终产物**：最终状态、代码文件、测试结果和得分。
 
-**Claude Code**, **Codex**, **Kimi Code**, **OpenCode**, **MiMo Code** and
-**DeerFlow** ship as built-in integrations. They use their native CLI or pinned runner behind
-the common adapter contract — no special model access.
-Anything else — your own agent, a research prototype, an internal tool —
-plugs in through the same registry and result contract as a YAML local-CLI
-profile, ACP server, remote service, or trusted Python plugin (see
-[agents.md](agents.md)).
+## 内置基线
 
-## How a run works
+项目内置 **Claude Code**、**Codex**、**Kimi Code**、**OpenCode**、
+**MiMo Code** 和 **DeerFlow**。它们通过统一 adapter 契约调用原生 CLI 或固定版本的
+runner，不享有特殊模型访问能力。
 
-1. Pick an **environment** (`envs/<name>/`) — a task definition plus
-   whatever tools the task needs (or none, for pure coding tasks).
-2. Pick one or more **agents** to run the same task.
-3. Each attempt runs isolated: its own working directory, its own session
-   token, its own trace file. Agents cannot see or interfere with each
-   other's runs.
-4. A per-environment **scorer** reads the trace and final state, and
-   produces a weighted 0-100 score.
-5. Compare side by side: transcripts, tool calls, timing, token usage,
-   scores.
+自研 Agent、研究原型和内部工具也可以通过同一 registry 与结果契约接入，支持 YAML
+本地 CLI profile、ACP server、远程服务和受信任的 Python plugin。详见
+[Agent 接入指南](agents.md)。
 
-## Stack
+## 一次运行如何执行
 
-Python 3.11+ / FastAPI / SQLite / uv (backend) — React + Vite + TypeScript
-(frontend).
+1. 选择一个评测**环境**（`envs/<name>/`），其中包含任务定义、所需工具（纯编程任务
+   可以没有工具）和 scorer。
+2. 选择一个或多个 **Agent** 执行同一任务。
+3. 每个 Attempt 在独立工作区、session token 和 trace 中运行，彼此不可见、不可干扰。
+4. 环境自己的 **scorer** 读取 trace 和最终状态，生成加权的 0–100 分。
+5. 前端并排展示对话、工具调用、耗时、token usage 和得分。
 
-## Docs
+## 技术栈
 
-- [architecture.md](architecture.md) — how the pieces fit together
-- [environments.md](environments.md) — how to write a new evaluation
-  environment
-- [agents.md](agents.md) — how to plug in a new agent
-- [experiments.md](experiments.md) — batch execution, resume, aggregation,
-  and reproducibility manifests
+后端使用 Python 3.11+、FastAPI、SQLite 和 uv；前端使用 React、Vite 和
+TypeScript。
 
-## Quick start
+## 文档
+
+- [架构说明](architecture.md)
+- [评测环境编写指南](environments.md)
+- [Agent 接入指南](agents.md)
+- [批量实验、恢复、聚合与复现清单](experiments.md)
+
+## 快速开始
 
 ```bash
 ./start.sh
 ```
 
-Open the frontend, pick the `order-desk` environment, select one or more
-installed Agents, and run. A built-in Agent reports as available only when its
-CLI or runner is installed on `PATH` at a supported version.
+打开前端，选择 `order-desk` 等环境和一个或多个已安装 Agent 后运行。只有对应 CLI
+或 runner 已位于 `PATH` 且版本满足约束时，内置 Agent 才会显示为可用。

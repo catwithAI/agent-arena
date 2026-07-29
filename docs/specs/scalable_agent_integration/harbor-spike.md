@@ -1,62 +1,50 @@
-# Harbor agent architecture mapping
+# Harbor Agent 架构映射
 
-Research snapshot: 2026-07-22. Upstream repository:
-`https://github.com/harbor-framework/harbor`, revision
-`1393655243125f1d63f81f9bd2f217eefaba3633` (2026-07-20).
+研究快照：2026-07-22。上游仓库
+`https://github.com/harbor-framework/harbor`，revision
+`1393655243125f1d63f81f9bd2f217eefaba3633`（2026-07-20）。
 
-This is a design comparison, not a runtime or source dependency. No Harbor
-source is copied by the current implementation.
+本文是设计比较，不是 runtime 或源码依赖；当前实现没有复制 Harbor 源码。
 
-## Reusable boundaries
+## 可复用边界
 
-| Harbor concept | Useful idea | Agent Arena mapping |
+| Harbor 概念 | 可借鉴思路 | Agent Arena 映射 |
 |---|---|---|
-| `BaseAgent` | Small lifecycle contract (`setup`, `run`, optional `resume`) plus stable identity/context | `AgentAdapter`, `AdapterRunInput`, `AdapterResult`, driver contracts |
-| `BaseInstalledAgent` | Shared version detection, typed CLI/env descriptors, error classification and prompt rendering | `AvailabilityService`, `AgentSpec`, `LaunchPlan`, shared error taxonomy |
-| `AgentFactory` | Name/import-path resolution and lazy class loading | `AgentRegistry` and `ResolvedAgent.build_adapter()` |
-| ACP registry shorthand | One protocol adapter resolves many data-only registry entries | `acp:<id>@<version>` plus shared `AcpTransportAdapter` |
-| Agent context/trajectory | Preserve partial evidence and metadata even when execution fails | raw runtime evidence, `ParseResult`, agent manifest and Wire coverage |
+| `BaseAgent` | 小型生命周期契约（`setup`、`run`、可选 `resume`）及稳定 identity/context | `AgentAdapter`、`AdapterRunInput`、`AdapterResult`、driver contract |
+| `BaseInstalledAgent` | 共享版本探测、强类型 CLI/env descriptor、错误分类和 Prompt 渲染 | `AvailabilityService`、`AgentSpec`、`LaunchPlan`、共享错误 taxonomy |
+| `AgentFactory` | 名称/import path 解析和 lazy class loading | `AgentRegistry` 与 `ResolvedAgent.build_adapter()` |
+| ACP registry shorthand | 一个协议 adapter 解析多个纯数据 registry 条目 | `acp:<id>@<version>` 与共享 `AcpTransportAdapter` |
+| Agent context/trajectory | 即使执行失败也保留部分证据和 metadata | raw runtime evidence、`ParseResult`、Agent manifest、Wire coverage |
 
-The reusable part is separation of descriptor, construction, lifecycle and
-evidence. The implementation classes are not copied.
+可复用的是 descriptor、构造、生命周期和证据的分离，不复制实现 class。
 
-## Deliberately different boundaries
+## 明确不同的边界
 
-Harbor's `BaseAgent` receives a `BaseEnvironment`; its installed agents run
-setup commands inside a task environment, may create `/installed-agent`, and
-can execute installation commands as root or the task agent user. Agent Arena's
-current execution locus is the host or an explicitly declared remote host. It
-therefore must not copy these assumptions:
+Harbor 的 `BaseAgent` 接收 `BaseEnvironment`；installed Agent 会在任务环境中运行 setup
+命令、创建 `/installed-agent`，并可能以 root 或任务用户执行安装。Agent Arena 当前
+execution locus 是宿主机或显式声明的远程主机，因此不能照搬这些假设：
 
-- no per-run package-manager installation, root setup, NVM/uvx/npx bootstrap or
-  mutation of a container image;
-- no Harbor container paths, default user, log synchronization or environment
-  `exec()` API in AgentSpec/runtime contracts;
-- no shell-string command composition; Agent Arena keeps tokenized argv and a
-  process group owned by the Attempt;
-- no implicit global environment inheritance or registry metadata becoming
-  execution authority;
-- no inference that Harbor's ACP/DeerFlow behavior proves the same capability
-  for Agent Arena's pinned revision and workspace topology.
+- 不允许每轮 package-manager 安装、root setup、NVM/uvx/npx bootstrap 或修改
+  container image；
+- AgentSpec/runtime 契约不引入 Harbor container path、默认用户、log sync 或环境
+  `exec()` API；
+- 不拼接 shell string；保持 tokenized argv 和 Attempt 所有的 process group；
+- 不隐式继承全局环境，也不让 registry metadata 获得执行授权；
+- 不根据 Harbor 的 ACP/DeerFlow 行为推定 Agent Arena 固定版本与工作区拓扑拥有同样能力。
 
-Preinstalled binaries, isolated runtime images, and future administrator-owned
-tool caches are separate deployment decisions. Ordinary runs remain read-only
-with respect to package installation.
+预装 binary、隔离 runtime image 和未来管理员管理的 tool cache 属于独立部署决策。
+普通 Run 对 package installation 保持只读。
 
-## Apache-2.0 obligations
+## Apache-2.0 义务
 
-The inspected Harbor revision contains an Apache License 2.0 `LICENSE` and no
-repository-root `NOTICE` file. Design ideas and clean-room reimplementation do
-not require copying source notices. If future work copies or modifies Harbor
-source, that change must:
+所检查 revision 包含 Apache License 2.0 `LICENSE`，仓库根目录没有 `NOTICE`。只借鉴
+设计并 clean-room 重写，无需复制源码 notice。未来若复制或修改 Harbor 源码，必须：
 
-1. retain applicable source copyright and license notices;
-2. include the Apache-2.0 license with the distribution;
-3. clearly mark modified files;
-4. reproduce any upstream `NOTICE` content if a later pinned revision includes
-   one, while retaining only notices relevant to the redistributed work;
-5. add an attribution entry identifying the upstream repository, pinned commit
-   and copied files.
+1. 保留适用的源码版权和 license notice；
+2. 随 distribution 包含 Apache-2.0 license；
+3. 明确标记修改过的文件；
+4. 若后续固定 revision 含 `NOTICE`，复制其中与再分发内容相关的 notice；
+5. 增加 attribution，注明上游仓库、固定 commit 和复制文件。
 
-Before accepting copied code, review the exact pinned revision again; this
-document is not a blanket license audit for later revisions or dependencies.
+接收复制代码前必须重新审查精确 revision；本文不是对后续 revision 或依赖的通用
+license audit。

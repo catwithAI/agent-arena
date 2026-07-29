@@ -1,50 +1,41 @@
-# Plugging in an agent
+# 接入 Agent
 
-agent-arena ships with reference adapters for **Claude Code**, **Codex**,
-**Kimi Code**, **OpenCode**, **MiMo Code** and the pinned **DeerFlow 2**
-integration, plus
-registry-backed extension points for CLI profiles, ACP, trusted Python plugins
-and remote services.
+agent-arena 内置 **Claude Code**、**Codex**、**Kimi Code**、**OpenCode**、
+**MiMo Code** 和固定版本的 **DeerFlow 2**，并通过 registry 支持 CLI profile、
+ACP、受信任的 Python plugin 和远程服务。
 
-The built-in integrations preserve each agent's verified native capabilities
-(such as WebSearch, subagent/task delegation, skills or slash commands where
-the integration supports them). Adapters isolate the *host's* local state and
-publish unsupported capabilities explicitly — see
-[Fairness notes](#fairness-notes) below.
+内置集成会保留已经验证的原生能力，例如 WebSearch、子 Agent/任务委派、skill 和
+slash command。Adapter 只隔离宿主机本地状态，并显式公布不支持的能力。参见
+[公平性说明](#公平性说明)。
 
-## Built-in: Claude Code
+## 内置：Claude Code
 
-`backend/adapters/claude_code.py` spawns:
+`backend/adapters/claude_code.py` 启动：
 
-```
+```text
 claude -p "<prompt>" --output-format stream-json --verbose \
   --model <model> --max-budget-usd <budget> \
   --dangerously-skip-permissions \
   [--mcp-config <generated mcp_config.json>]
 ```
 
-- Parses `stream-json` stdout line by line: `type=assistant` turns carry
-  `thinking`/`text`/`tool_use`/`tool_result` blocks, `type=result` is the
-  final summary (cost, token usage, success/error).
-- `CLAUDE_CONFIG_DIR`/`HOME` point at a clean, per-attempt directory so the
-  CLI never reads the host operator's global `~/.claude` (skills, plugins,
-  MCP servers, memory, `CLAUDE.md`, settings). This is state isolation, not
-  a capability restriction — the CLI's own native tools are untouched.
-- `--mcp-config` is only passed when the scenario's `meta.yaml` declares an
-  `entrypoints.mcp` server (see [environments.md](environments.md)); the
-  adapter never guesses a server path or name from `env_name`. Scenarios
-  without a declared MCP server run with no MCP config at all.
-- To route through a third-party model provider, prefix the model with the
-  provider name configured in `arena.yaml`'s `model_providers` (e.g.
-  `"openrouter/glm-5"`) — the adapter injects `ANTHROPIC_BASE_URL` /
-  `ANTHROPIC_AUTH_TOKEN` into the subprocess env rather than touching your
-  global `claude` settings.
+- 逐行解析 `stream-json`。`type=assistant` turn 包含
+  `thinking`、`text`、`tool_use` 和 `tool_result` block；
+  `type=result` 提供成本、token usage 和成功/失败摘要。
+- `CLAUDE_CONFIG_DIR`/`HOME` 指向干净的 Attempt 私有目录，不读取宿主机全局
+  `~/.claude` 中的 skill、plugin、MCP、memory、`CLAUDE.md` 或 setting。这是状态
+  隔离，不会禁用 CLI 自带工具。
+- 只有场景 `meta.yaml` 声明 `entrypoints.mcp` 时才传入 `--mcp-config`；adapter
+  不会根据 `env_name` 猜测 server。
+- 第三方 provider 使用 `arena.yaml` 的 `model_providers` 前缀，例如
+  `"openrouter/glm-5"`。Adapter 只向子进程注入 `ANTHROPIC_BASE_URL` 和
+  `ANTHROPIC_AUTH_TOKEN`，不修改全局 Claude 配置。
 
-## Built-in: Codex
+## 内置：Codex
 
-`backend/adapters/codex.py` spawns:
+`backend/adapters/codex.py` 启动：
 
-```
+```text
 codex exec --json --skip-git-repo-check --ephemeral --ignore-rules \
   --dangerously-bypass-approvals-and-sandbox \
   -C <skill_workspace> -o <final_message_path> \
@@ -52,99 +43,79 @@ codex exec --json --skip-git-repo-check --ephemeral --ignore-rules \
   "<prompt>"
 ```
 
-- Uses one-shot `-c key=value` overrides instead of a config file, so it
-  never touches your global `~/.codex/config.toml`.
-- `CODEX_HOME` points at a clean, per-attempt directory for the same reason
-  as Claude Code's `HOME` isolation above — no global `config.toml`,
-  skills, plugins, memories or history leak into the run.
-- `mcp_servers.*` overrides are only emitted when the scenario declares an
-  MCP server; attempt credentials (`LANE_ATTEMPT_ID`/`LANE_SESSION_TOKEN`/
-  `LANE_BASE_URL`) are never placed in a `-c` argument (visible to anything
-  reading the process list) — they only reach the subprocess environment,
-  and only when an MCP child that needs them is actually going to spawn.
-- Third-party providers require an endpoint that speaks the OpenAI
-  Responses API (`wire_api: responses`) — Codex no longer supports the
-  legacy `chat` wire protocol for custom providers.
+- 使用一次性 `-c key=value` 覆盖，不修改全局 `~/.codex/config.toml`。
+- `CODEX_HOME` 指向 Attempt 私有目录，不泄漏全局 config、skill、plugin、memory
+  或 history。
+- 仅在场景声明 MCP 时生成 `mcp_servers.*` 覆盖。Attempt 凭证
+  `LANE_ATTEMPT_ID`、`LANE_SESSION_TOKEN`、`LANE_BASE_URL` 不进入进程列表可见的
+  `-c` 参数，只在确实要启动 MCP 子进程时进入环境变量。
+- 第三方 provider 必须支持 OpenAI Responses API（`wire_api: responses`）；
+  Codex 不再支持自定义 provider 的旧 `chat` wire protocol。
 
-## Built-in (optional): Claude Code over SSH
+## 内置（可选）：SSH Claude Code
 
-`backend/adapters/ssh_claude_code.py` runs the same `claude -p ... --output-format
-stream-json` flow as the local Claude Code adapter, but on a remote machine
-reached via `ssh`/`scp` instead of a local subprocess — useful when the agent
-needs to run in a different network/filesystem context than this backend
-(e.g. a dedicated worker host).
+`backend/adapters/ssh_claude_code.py` 通过 `ssh`/`scp` 在远程主机执行与本地
+Claude Code 相同的 `claude -p ... --output-format stream-json` 流程，适合专用
+worker 等不同网络或文件系统环境。
 
-It is disabled by default and only registers as the `"ssh-claude-code"` agent
-once `ssh_claude_code.ssh_host` is set in `arena.yaml` (or via
-`LANE_SSH_CLAUDE_HOST` / `LANE_SSH_CLAUDE_USER` / `LANE_SSH_CLAUDE_PASSWORD`):
+默认不启用。只有 `arena.yaml` 配置 `ssh_claude_code.ssh_host`，或设置
+`LANE_SSH_CLAUDE_HOST`、`LANE_SSH_CLAUDE_USER`、`LANE_SSH_CLAUDE_PASSWORD`
+后才注册为 `"ssh-claude-code"`：
 
 ```yaml
 ssh_claude_code:
   ssh_host: "10.0.0.5"
   ssh_user: "ai"
-  ssh_password: "..."   # prefer LANE_SSH_CLAUDE_PASSWORD instead of committing this
+  ssh_password: "..."   # 建议改用 LANE_SSH_CLAUDE_PASSWORD
   max_budget_usd: 5.0
 ```
 
-- The prompt and MCP config are written to local files and uploaded via SCP
-  rather than interpolated into the SSH command line, so a task prompt
-  containing quotes/newlines/backticks can never be interpreted as shell
-  syntax on the remote end.
-- The remote MCP server is expected to run from a fixed venv path
-  (`/tmp/lane-mcp-venv/bin/python`) that must be provisioned on the remote
-  host ahead of time; the Python entrypoint named in the scenario's declared
-  `entrypoints.mcp.command` is copied there per attempt (this adapter
-  currently supports exactly one declared MCP server per scenario).
-- Wire observability does not apply: the remote CLI has no local
-  spool/injection channel, so `wire_capture_capabilities` declares every
-  field unsupported.
+- Prompt 和 MCP 配置先写入本地文件再通过 SCP 上传，避免引号、换行和反引号被远程
+  shell 解释。
+- 远程 MCP server 使用预先部署的 `/tmp/lane-mcp-venv/bin/python`；
+  `entrypoints.mcp.command` 指定的 Python entrypoint 会按 Attempt 复制。目前每个
+  场景只支持一个声明的 MCP server。
+- 远程 CLI 没有本地 spool/injection channel，因此
+  `wire_capture_capabilities` 的所有字段均为 unsupported。
 
-## Built-in: DeerFlow
+## 内置：DeerFlow
 
-The stable `deerflow` descriptor targets `deerflow-harness==2.0.0` at revision
-`7e7f0410797693cf882594555ba414e0361d4c6f`. The package and
-`deerflow-arena-runner` must be installed by an administrator; a run never
-installs or updates them. Each Attempt receives a private DeerFlow project,
-home and config plus a checked bridge to `skill_workspace`.
+稳定的 `deerflow` descriptor 固定到 `deerflow-harness==2.0.0` 和 revision
+`7e7f0410797693cf882594555ba414e0361d4c6f`。管理员必须预装 package 与
+`deerflow-arena-runner`，普通 Run 不会安装或更新它们。每个 Attempt 都有私有
+DeerFlow project、home、config，以及经过校验的 `skill_workspace` bridge。
 
-The current integration supports its verified single-turn runner and local
-sandbox event stream. Lane MCP, cross-Attempt resume and observable child Agent
-identity remain unsupported. See
-[the pinned spike](specs/scalable_agent_integration/deerflow-spike.md).
+当前集成支持已验证的单轮 runner 和本地 sandbox event stream。Lane MCP、跨 Attempt
+resume 和可观测的子 Agent identity 仍不支持。详见
+[固定版本 spike](specs/scalable_agent_integration/deerflow-spike.md)。
 
-## Built-in (experimental): Kimi Code
+## 内置（实验性）：Kimi Code
 
-The `kimi-code` descriptor uses Kimi Code CLI 0.29 or newer through the shared
-local profile runtime:
+`kimi-code` descriptor 通过共享本地 profile runtime 使用 Kimi Code CLI 0.29+：
 
 ```text
 kimi -p "<prompt>" --output-format stream-json \
   [-m <model>]
 ```
 
-- Structured JSONL is mapped into the common event/final-text contract.
-- Multi-turn scenarios resume with `-r <session_id>` using only the explicit
-  `session.resume_hint` emitted by the first turn; the adapter never selects a
-  "latest" session.
-- Declared scenario MCP servers are written to the Attempt-private
-  `$KIMI_CODE_HOME/mcp.json`; Kimi Code 0.29.1 has no
-  `--mcp-config-file` flag.
-- The CLI receives an Attempt-private home, so global Kimi login, sessions,
-  skills, plugins and configuration are not inherited. Supply credentials by
-  environment. At minimum, set `KIMI_MODEL_NAME` and `KIMI_MODEL_API_KEY`;
-  optional `KIMI_MODEL_*` variables select the endpoint and provider protocol.
-  When explicitly overriding the arena model, use a Kimi config alias available
-  inside the isolated runtime (the environment-defined alias is
-  `__kimi_env_model__`).
+- 结构化 JSONL 会映射为统一 event/final-text 契约。
+- 多轮场景只使用首轮显式产生的 `session.resume_hint`，通过
+  `-r <session_id>` 恢复；不会选择“最新”session。
+- 声明的 MCP server 写入 Attempt 私有 `$KIMI_CODE_HOME/mcp.json`。Kimi Code
+  0.29.1 没有 `--mcp-config-file` 参数。
+- CLI 使用 Attempt 私有 home，不继承全局登录、session、skill、plugin 或配置。
+  凭证通过环境变量提供，至少设置 `KIMI_MODEL_NAME` 和 `KIMI_MODEL_API_KEY`；
+  可选 `KIMI_MODEL_*` 选择 endpoint 和 provider protocol。显式覆盖 Arena 模型时，
+  使用隔离 runtime 中可用的 Kimi config alias；环境定义的 alias 为
+  `__kimi_env_model__`。
 
-Install Kimi Code following the
-[official repository](https://github.com/MoonshotAI/kimi-code) and ensure
-`kimi` is on `PATH`.
+按 [Kimi Code 官方仓库](https://github.com/MoonshotAI/kimi-code)安装，并确保
+`kimi` 位于 `PATH`。
 
-## Built-in (experimental): OpenCode and MiMo Code
+## 内置（实验性）：OpenCode 与 MiMo Code
 
-The `opencode` and `mimo-code` descriptors use OpenCode 1.18.5 and MiMo Code
-0.1.9 or newer through the same profile runtime:
+`opencode` 和 `mimo-code` descriptor 通过同一 profile runtime 使用
+OpenCode 1.18.5+ 与 MiMo Code 0.1.9+：
 
 ```text
 opencode run --format json --auto --dir <skill_workspace> \
@@ -153,97 +124,83 @@ mimo run --format json --dangerously-skip-permissions --dir <skill_workspace> \
   [--model <provider/model>] "<prompt>"
 ```
 
-- JSON events expose final text, reasoning, tool activity, aggregate usage and
-  an explicit `sessionID` used for safe multi-turn resume.
-- `--dir` is always explicit. Merely setting the subprocess cwd is insufficient
-  because this CLI family can discover a parent project and otherwise read
-  files belonging to another Attempt.
-- Automatic approval is explicit in argv: OpenCode uses `--auto`, while its
-  MiMo fork uses `--dangerously-skip-permissions`. Omitting the family-specific
-  flag causes tool calls to be rejected even though the Agent loop can exit
-  normally.
-- Runs use Attempt-private HOME/XDG directories and do not inherit global
-  authentication, memory, skills or sessions. The family-specific
-  `*_CONFIG_DIR` also points at the Attempt-private runtime directory.
-- Lane MCP injection remains unsupported for these headless profiles until the
-  combined provider/MCP config lifecycle is represented by a verified dialect.
+- JSON event 提供 final text、reasoning、tool activity、aggregate usage，以及用于安全
+  多轮 resume 的显式 `sessionID`。
+- 始终显式传入 `--dir`。仅设置子进程 cwd 不够，因为该 CLI family 可能发现父项目并
+  读取其他 Attempt 的文件。
+- 自动批准参数因 family 而异：OpenCode 使用 `--auto`，MiMo fork 使用
+  `--dangerously-skip-permissions`。缺少正确参数时，Agent loop 可能正常退出，但工具
+  调用会被拒绝。
+- 使用 Attempt 私有 HOME/XDG 和 `*_CONFIG_DIR`，不继承全局认证、memory、skill
+  或 session。
+- 在 provider/MCP 组合配置生命周期形成经过验证的 dialect 前，这两个 headless
+  profile 不支持 Lane MCP 注入。
 
-Install from the [OpenCode repository](https://github.com/anomalyco/opencode)
-or the [MiMo Code repository](https://github.com/XiaomiMiMo/MiMo-Code), and
-ensure the corresponding executable is on `PATH`.
+按 [OpenCode 仓库](https://github.com/anomalyco/opencode)或
+[MiMo Code 仓库](https://github.com/XiaomiMiMo/MiMo-Code)安装，并确保对应可执行
+文件位于 `PATH`。
 
-## Registry-backed Agent configuration
+## Registry 驱动的 Agent 配置
 
-`AgentRegistry` is the source of truth used by the catalog, compatibility
-preflight and dispatch. `agents.profiles` describes local CLIs with strict
-AgentSpec v1 fields; `agents.acp`, `agents.remote`, and
-`agents.python_plugins` use focused configuration shown in
-[`arena.yaml.example`](../arena.yaml.example). Legacy `custom_agents` remains
-available for migration and appears with `source=legacy` plus a warning.
+`AgentRegistry` 是目录、兼容性预检和 dispatch 的事实源。`agents.profiles` 使用严格
+AgentSpec v1 字段描述本地 CLI；`agents.acp`、`agents.remote` 和
+`agents.python_plugins` 的配置示例见
+[`arena.yaml.example`](../arena.yaml.example)。旧 `custom_agents` 仍可用于迁移，
+在目录中显示为 `source=legacy` 并带 warning。
 
 ### ACP v1
 
-ACP entries use exact IDs such as `acp:my-agent@1.2.3`. The configured command
-must already be installed and registry metadata must be pinned by SHA-256.
-Normal runs never execute package installation from registry `binary`, `npx`,
-or `uvx` metadata. One shared transport handles every entry. Unmatched
-permission requests are cancelled and fail the Attempt; no allow option is
-selected implicitly.
+ACP 条目使用 `acp:my-agent@1.2.3` 等精确 ID。命令必须已经安装，registry metadata
+必须固定 SHA-256。普通 Run 不会执行 registry 中 `binary`、`npx` 或 `uvx` 的安装
+metadata。所有条目复用同一个 transport；未匹配的 permission request 会被取消并使
+Attempt 失败，不会隐式选择 allow。
 
-### Remote services
+### 远程服务
 
-Remote entries disclose endpoint, data residency, source upload policy and
-cancellation semantics in the picker. Endpoints require HTTPS. Files are sent
-only when `upload_files` is enabled; returned artifacts must be same-origin,
-size/checksum verified, and resolve within the Attempt workspace. An
-unconfirmed server-side cancellation is recorded as
-`cancel_requested_remote_unknown`. See the
-[remote contract](specs/scalable_agent_integration/remote-transport.md).
+Picker 会展示 endpoint、data residency、源码上传策略和取消语义。Endpoint 必须使用
+HTTPS。只有 `upload_files` 开启时才发送文件；返回产物必须同源、通过 size/checksum
+验证并解析到 Attempt 工作区内。无法确认的服务端取消记录为
+`cancel_requested_remote_unknown`。详见
+[远程契约](specs/scalable_agent_integration/remote-transport.md)。
 
-### Trusted Python plugins
+### 受信任的 Python plugin
 
-`agents.python_plugins` points at an external `module:attribute`, imported only
-when selected. The shared wrapper owns prompt/MCP inputs, manifests, redaction,
-output limits and artifact validation. These plugins execute inside the backend
-process and are trusted code, not a sandbox. Start from the
-[example package](../examples/python_agent_plugin/README.md).
+`agents.python_plugins` 指向外部 `module:attribute`，仅在选中时导入。共享 wrapper
+负责 Prompt/MCP 输入、manifest、脱敏、输出限制和产物验证。Plugin 在后端进程内执行，
+属于受信任代码而非 sandbox。起步示例见
+[示例 package](../examples/python_agent_plugin/README.md)。
 
-## Bringing your own agent
+## 接入自己的 Agent
 
-For new integrations, prefer the versioned `agents.profiles`, `agents.acp`,
-`agents.remote`, or `agents.python_plugins` entries described above. The two
-implementation paths below remain useful for legacy config-only CLIs and for
-authors who need framework-wrapped Python code.
+新集成应优先使用上述 `agents.profiles`、`agents.acp`、`agents.remote` 或
+`agents.python_plugins`。下面保留旧配置型 CLI 和需要 Python 代码的两种实现路径。
 
-### Legacy config-only CLI, via `CustomCliAdapter`
+### 旧配置型 CLI：`CustomCliAdapter`
 
-If your agent is a CLI that takes a prompt and prints output, no Python
-required — describe it in `arena.yaml`:
+只接收 Prompt 并输出结果的 CLI 无需编写 Python，可在 `arena.yaml` 中声明：
 
 ```yaml
 custom_agents:
   my-agent:
     command: ["my-agent-cli", "--prompt-file", "{prompt_file}"]
-    prompt_mode: file        # stdin | file | arg — how the prompt reaches the CLI
+    prompt_mode: file        # stdin | file | arg
     output_format: text      # text | jsonl
-    # If your agent emits JSONL events and you want thinking/usage extracted:
     # output_format: jsonl
     # jsonl_fields:
     #   type_field: "type"
     #   thinking_type_value: "reasoning"
     #   text_field: "text"
     #   usage_field: "usage"
-    # If your agent supports MCP and you want it to reach env tools:
     # mcp_config_flag: "--mcp-config"
 ```
 
-The agent then shows up as `"my-agent"` in `POST /api/runs`'s `agents` list and
-in the frontend's agent picker, exactly like `claude-code`/`codex`. See
-`backend/adapters/custom_cli.py` for the full field reference.
+随后 `"my-agent"` 会像 `claude-code`/`codex` 一样出现在
+`POST /api/runs` 的 `agents` 列表及前端 picker 中。完整字段见
+`backend/adapters/custom_cli.py`。
 
-### A framework-wrapped Python plugin
+### 框架封装的 Python plugin
 
-Implement the small Python plugin contract:
+实现小型 plugin 契约：
 
 ```python
 from backend.agents.python_plugin import PythonAgentOutput
@@ -258,38 +215,24 @@ class MyAgent:
         )
 ```
 
-Register the external entrypoint under `agents.python_plugins`; do not edit
-dispatch. If you truly need a new transport, add one registry builder and keep
-its runtime/parser behavior behind the standard `AgentAdapter` result contract.
+在 `agents.python_plugins` 下注册外部 entrypoint，无需修改 dispatch。确实需要新
+transport 时，只增加一个 registry builder，并把 runtime/parser 行为保持在标准
+`AgentAdapter` 结果契约之后。
 
-## Fairness notes
+## 公平性说明
 
-"Fair comparison" in agent-arena means the same task, the same input
-materials, the same time/budget limits and the same external-resource
-boundaries — it does not mean trimming every agent down to an identical
-tool set. Claude Code, Codex, and whatever you plug in via `custom_agents`
-keep their full native capabilities (WebSearch, subagent delegation,
-skills, slash commands, ...); which of those an agent chooses to use for a
-given task is itself part of what the comparison measures.
+“公平比较”表示任务、输入材料、时间/预算和外部资源边界一致，不表示把所有 Agent
+裁剪成相同工具集合。原生能力差异本身就是评测结果的一部分。
 
-What adapters *do* normalize:
+Adapter 会统一：
 
-- **Prompt shape** — every adapter renders the task prompt through the same
-  `prompt_context()` helper (`backend/adapters/base.py`) so agents see
-  identically-shaped input, and no adapter hardcodes a preferred solving
-  method ("you must use tool X") into the prompt.
-- **Host isolation** — Claude Code and Codex use Attempt-private HOME/config
-  roots; Kimi Code, OpenCode and MiMo Code likewise receive private
-  HOME/XDG/Agent-specific config and session locations. A run never inherits
-  whoever operates the box's personal global Agent state. This is about not
-  leaking private local state into results, not about limiting capabilities.
-- **Attempt isolation** — each attempt gets its own `skill_workspace`, private
-  runtime/control directories, session token and env server session; nothing
-  about one attempt is visible to another, even within the same run.
+- **Prompt 形态**：通过 `backend/adapters/base.py` 的 `prompt_context()` 渲染，
+  不硬编码首选解法。
+- **宿主机隔离**：Claude Code、Codex、Kimi Code、OpenCode 和 MiMo Code 均使用
+  Attempt 私有 HOME/config/session 位置，不继承操作者全局 Agent 状态。
+- **Attempt 隔离**：每个 Attempt 独享 `skill_workspace`、私有 runtime/control
+  目录、session token 和 env server session。
 
-What adapters do *not* do: they don't disable an agent's built-in tools,
-skills, or task-decomposition ability to make agents "comparable," and they
-don't invent MCP servers. Environment tools reach an agent only if the
-scenario's `meta.yaml` explicitly declares an `entrypoints.mcp` server (see
-[environments.md](environments.md)) — the framework wires up exactly what's
-declared and nothing more.
+Adapter 不会为了“可比”而关闭原生工具、skill 或任务拆解能力，也不会虚构 MCP
+server。只有场景 `meta.yaml` 显式声明 `entrypoints.mcp` 时，Agent 才能获得对应
+环境工具。

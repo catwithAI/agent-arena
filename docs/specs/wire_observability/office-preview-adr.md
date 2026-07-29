@@ -1,96 +1,88 @@
-# ADR: W7 Office artifact preview boundary
+# ADR：W7 Office artifact 预览边界
 
-- Status: accepted for W7 implementation
-- Date: 2026-07-14
-- Contract: `lane-artifact-preview-v1`
+- 状态：W7 实现已接受
+- 日期：2026-07-14
+- 契约：`lane-artifact-preview-v1`
 
-## Decision
+## 决策
 
-Office files are untrusted business artifacts. agent-arena will classify and render them on the server;
-the browser never receives an OOXML ZIP as text and never executes formulas, macros, embedded
-objects, scripts, data connections, or external relationships.
+Office 文件是不可信业务 artifact。agent-arena 在服务端分类和渲染；浏览器不会把
+OOXML ZIP 当文本接收，也不会执行 formula、macro、embedded object、script、data
+connection 或 external relationship。
 
-The public endpoints are separated deliberately:
+公共 endpoint 刻意分离：
 
-- `GET .../artifacts` lists files with a content-derived type and MIME;
-- `GET .../artifacts/{ref}` returns the original byte-identical file;
-- `GET .../artifact-previews/{ref}` returns a versioned preview descriptor, never raw Office bytes;
-- future rendered resources are addressed only through descriptor-owned, opaque refs.
+- `GET .../artifacts`：按内容推导的 type 与 MIME 列出文件；
+- `GET .../artifacts/{ref}`：返回逐字节一致的原始文件；
+- `GET .../artifact-previews/{ref}`：返回带版本的 preview descriptor，不返回原始
+  Office bytes；
+- 未来渲染资源只允许通过 descriptor 拥有的不透明 ref 访问。
 
-The descriptor contains original artifact identity, status (`ready|rendering|unsupported|failed`),
-slide/page/sheet counts where observable, renderer name/version, a content hash cache key, a stable
-error code, security observations and explicit capability gaps. Preview failure never removes or
-changes the original download.
+Descriptor 包含原 artifact identity、状态
+`ready|rendering|unsupported|failed`、可观测的 slide/page/sheet 数、renderer
+名称/版本、content hash cache key、稳定 error code、安全观察和明确的 capability gap。
+预览失败不会删除或改变原文件下载。
 
-## Renderer split
+## Renderer 划分
 
-- PPTX: the built-in isolated worker produces a bounded static layout IR for slides, positioned text,
-  tables, safe raster images and speaker notes. It never executes transitions/animations or loads
-  external resources. Theme/group transforms and charts are explicit fidelity gaps. A future
-  sandboxed LibreOffice/PDF renderer may improve pixel fidelity without changing the public contract.
-- DOCX: the built-in isolated worker produces semantic document IR for headings, paragraphs, runs,
-  lists, tables, safe external hyperlinks, headers and footers. Pagination is approximate and embedded
-  images/comments/notes are explicit gaps. A future PDF renderer is an optional fidelity enhancement,
-  not required for safe content access.
-- XLSX: a bounded structural parser produces workbook/sheet/cell JSON. Formula strings and existing
-  cached values may be displayed, but formulas are never evaluated. The browser renders the bounded
-  grid and virtualizes rows.
-- Legacy PPT/DOC/XLS: download-only until the same sandboxed worker is available and fidelity fixtures
-  pass. There is no in-process legacy Office parser.
-- Macro-enabled OOXML: static preview is allowed only after active parts have been removed from the
-  renderer input. Macros and embedded OLE/ActiveX content are never executed.
+- **PPTX**：内置隔离 worker 为 slide、定位文本、table、安全 raster image 和 speaker
+  note 生成有界静态 layout IR。不执行 transition/animation，不加载外部资源。
+  Theme/group transform 和 chart 明确记为 fidelity gap。未来可增加 sandboxed
+  LibreOffice/PDF renderer。
+- **DOCX**：内置隔离 worker 为 heading、paragraph、run、list、table、安全外链、
+  header/footer 生成语义 IR。Pagination 为近似值；embedded image/comment/note 是明确
+  gap。未来 PDF renderer 只是可选 fidelity 增强。
+- **XLSX**：有界结构 parser 生成 workbook/sheet/cell JSON。可展示 formula string
+  和已有 cached value，但绝不计算 formula；浏览器渲染有界 grid 并虚拟化 row。
+- **旧 PPT/DOC/XLS**：在相同 sandbox worker 可用且 fidelity fixture 通过前只允许
+  下载，不使用进程内旧 Office parser。
+- **启用 macro 的 OOXML**：只有从 renderer 输入移除 active part 后才允许静态预览；
+  macro 和 embedded OLE/ActiveX 永不执行。
 
-Renderer output is cached below the attempt's `artifact-previews/` framework directory and excluded
-from normal artifact listing/download. The cache identity includes source SHA-256, contract version,
-renderer/version and renderer options. A source change always produces a different cache key.
+Renderer 输出缓存在 Attempt 的框架目录 `artifact-previews/` 下，不进入普通 artifact
+列表或下载。Cache identity 包含源码 SHA-256、契约版本、renderer/版本和 option；
+源码变化必然产生新 key。
 
-## Limits and scheduling
+## 限制与调度
 
-The preflight scanner runs before any renderer and currently enforces:
+任何 renderer 前先运行 preflight scanner，当前限制为：
 
-- source file: 128 MiB;
-- ZIP entries: 10,000;
-- total uncompressed bytes: 512 MiB;
-- a single uncompressed entry: 64 MiB;
-- compression ratio per entry: 200:1;
-- relationship XML inspected only within a 2 MiB per-entry bound.
+- 源文件：128 MiB；
+- ZIP entry：10,000；
+- 总解压字节：512 MiB；
+- 单个解压 entry：64 MiB；
+- 每个 entry 压缩比：200:1；
+- relationship XML：每个 entry 最多检查 2 MiB。
 
-Files up to 20 MiB may render synchronously within a 15-second deadline. Larger accepted files use a
-background job and descriptor polling (`status=rendering`, `poll_after_ms`); W7 uses polling rather
-than adding another SSE protocol. A worker has a renderer-specific hard timeout (15 seconds for the
-current structural XLSX worker; at most 60 seconds for future converters) and deployment-enforced CPU,
-memory, process, filesystem and no-network limits. If those isolation controls or the renderer are not
-available, the descriptor reports `unsupported`/`renderer_unavailable`; agent-arena must not silently run
-an unsandboxed converter.
+不超过 20 MiB 的文件可在 15 秒 deadline 内同步渲染。更大但可接受的文件使用后台
+job 与 descriptor polling（`status=rendering`、`poll_after_ms`）；W7 不新增 SSE。
+Worker 有 renderer 专属 hard timeout（当前结构化 XLSX worker 为 15 秒，未来 converter
+最多 60 秒），部署还必须限制 CPU、memory、process、filesystem 并禁网。隔离控制或
+renderer 不可用时返回 `unsupported`/`renderer_unavailable`，不得静默运行未 sandbox
+的 converter。
 
-Every ZIP member is checked for absolute paths and `..` traversal before reads. External relationships
-are reported but never fetched. XML parsing must be entity-safe and bounded. Each renderer runs with
-a fresh temporary working directory, a minimal environment and no inherited credentials. The parent
-copies the artifact to that directory and verifies the snapshot against the cache hash before the
-worker opens it; a concurrently changing artifact returns the retryable `artifact_changed` error
-instead of poisoning the cache. Renderer output stays in the temporary directory. Timeout/crash
-produces a stable preview error and cannot fail the attempt or RunDetail page.
+读取前检查每个 ZIP member 的 absolute path 和 `..` traversal。External relationship
+只报告、不获取；XML parser 必须 entity-safe 且有界。每次 renderer 使用新的临时
+cwd、最小环境且不继承凭证。父进程复制 artifact，并在 worker 打开前按 cache hash
+校验 snapshot；并发变化返回可重试的 `artifact_changed`，不污染 cache。Timeout/crash
+只产生稳定 preview error，不得使 Attempt 或 RunDetail 页面失败。
 
-The built-in PPTX, DOCX and XLSX renderers use the same isolated Python subprocess contract:
-`python -I`, a fresh temporary cwd/HOME/TMPDIR, a minimal environment, disabled socket creation,
-POSIX CPU/address-space/file-size/file-descriptor limits where available, and a 15-second parent-side
-hard timeout. Results use an output-file envelope rather than stdout and are capped at 32 MiB. Stable
-results are atomically cached below `artifact-previews/<composite-sha256>/`; cache roots and entries
-that are symlinks are ignored. Timeout/crash/invalid-output results are transient and never cached.
-Container-level seccomp/network/filesystem isolation remains a deployment hardening requirement for
-future LibreOffice workers; the built-in PPTX/DOCX/XLSX workers do not invoke third-party binaries.
+内置 PPTX、DOCX、XLSX renderer 复用同一隔离 Python 子进程契约：`python -I`、新的
+临时 cwd/HOME/TMPDIR、最小环境、禁用 socket、可用时设置 POSIX
+CPU/address-space/file-size/file-descriptor limit，并由父进程执行 15 秒 hard timeout。
+结果写入 output-file envelope，不走 stdout，上限 32 MiB。稳定结果原子缓存到
+`artifact-previews/<composite-sha256>/`；忽略 symlink cache root/entry。
+Timeout/crash/invalid-output 是瞬时结果，不缓存。未来 LibreOffice worker 仍需要
+container 级 seccomp/network/filesystem 加固；内置 worker 不调用第三方 binary。
 
-Large XLSX scheduling is implemented with a bounded two-thread executor and at most 256 deduplicated
-jobs. Identity is the resolved artifact path plus composite content key. The first request returns
-`rendering` with a 500 ms polling hint; concurrent polls reuse the same future, and the completed
-descriptor remains available in the bounded job table until normal eviction. A saturated queue fails
-with `renderer_queue_full` instead of silently adding unbounded work. The browser follows the polling
-hint (clamped to 10 ms–5 s), stops after 120 polls, and aborts timers/fetches when the user switches or
-closes an artifact.
+大型 XLSX 使用最多两个 thread、最多 256 个去重 job 的有界 executor。Identity 是解析
+后的 artifact path 与 composite content key。首次请求返回 `rendering` 和 500 ms
+polling hint；并发 poll 复用同一 future，完成 descriptor 留在有界 job table 中直到
+正常淘汰。队列饱和返回 `renderer_queue_full`，不得无限排队。浏览器将 hint 限制在
+10 ms–5 s，最多 poll 120 次，并在用户切换或关闭 artifact 时取消 timer/fetch。
 
-## Rollout
+## 发布步骤
 
-W7-1 ships the descriptor, content classification, bounded OOXML preflight, byte-identical download,
-and UI loading/error/unsupported shell. W7-2, W7-3 and W7-4 add renderer-specific resources behind the
-same contract. W7-5 completes navigation and comparison behavior without changing artifact trust or
-wire-blob policy boundaries.
+W7-1 交付 descriptor、内容分类、有界 OOXML preflight、逐字节一致下载，以及 UI 的
+loading/error/unsupported shell。W7-2、W7-3、W7-4 在同一契约后增加各 renderer
+资源；W7-5 完成导航与对比行为，不改变 artifact trust 或 wire-blob policy 边界。

@@ -1,37 +1,32 @@
-# Arena Remote Agent HTTP contract v1
+# Arena Remote Agent HTTP 契约 v1
 
-This contract is the boundary between Agent Arena and a vendor adapter. It is
-not presented as an industry protocol. Vendor SDK plugins translate their API
-to these semantics and still return the standard `AdapterResult` and agent
-manifest.
+本契约是 Agent Arena 与 vendor adapter 之间的边界，不宣称是行业协议。Vendor SDK
+plugin 将自身 API 转换为这些语义，同时仍返回标准 `AdapterResult` 与 Agent manifest。
 
-## Session lifecycle
+## Session 生命周期
 
-`POST /v1/sessions` receives `protocolVersion: arena-remote-v1`, Attempt ID,
-ordered turns, optional requested model, and explicitly permitted file payloads.
-It returns `sessionId`, `status`, and optionally same-origin `pollUrl` or
-`streamUrl`. Poll snapshots and newline-delimited stream snapshots use
-`queued|running|completed|failed|cancelled`; only the last three are terminal.
-Events and usage remain evidence supplied by the service and are never inferred.
+`POST /v1/sessions` 接收 `protocolVersion: arena-remote-v1`、Attempt ID、有序 turn、
+可选 requested model，以及明确允许上传的 file payload。响应包含 `sessionId`、
+`status`，以及可选的同源 `pollUrl` 或 `streamUrl`。
 
-`DELETE /v1/sessions/{id}` returns `confirmed: true` only when server-side stop
-is known. Any false, malformed, network-failed or missing response maps to
-`cancel_requested_remote_unknown`. A local timeout remains `agent_timeout` and
-records this independent remote cancellation state.
+轮询 snapshot 和换行分隔 stream snapshot 使用
+`queued|running|completed|failed|cancelled`，只有后三种是终态。Event 和 usage 始终
+是服务提供的证据，框架不会推断。
 
-## Data and artifacts
+`DELETE /v1/sessions/{id}` 只有在确定服务端已停止时才返回 `confirmed: true`。
+false、格式错误、网络失败或缺少响应都映射为
+`cancel_requested_remote_unknown`。本地超时仍记为 `agent_timeout`，并独立记录
+远端取消状态。
 
-Catalog UI discloses endpoint, declared data residency, whether source upload is
-enabled, and cancellation semantics before selection. File bytes are sent only
-when that Agent's administrator configuration enables uploads. Request summaries
-and manifests contain file names/count/size/hash, not bytes or API keys.
+## 数据与 artifact
 
-Artifact URLs must remain on the configured service origin. Paths must resolve
-inside `skill_workspace`; declared size, configured limit and SHA-256 are checked
-before acceptance. One failed artifact creates `artifacts=partial` without
-discarding already verified artifacts or changing a completed task into a false
-execution failure.
+选择前，目录 UI 会披露 endpoint、声明的数据驻留地、是否允许源码上传和取消语义。
+只有管理员配置允许上传时才发送文件内容。Request summary 和 manifest 只记录文件名、
+数量、大小和 hash，不记录文件内容或 API key。
 
-Remote services cannot access task-local MCP servers in v1. They must not bypass
-Attempt identity, workspace artifact boundaries, timeout handling, or manifest
-redaction through a vendor plugin.
+Artifact URL 必须与服务同源。路径必须解析到 `skill_workspace` 内，并在接收前校验声明
+size、配置限制和 SHA-256。单个 artifact 失败会产生 `artifacts=partial`，不会丢弃
+已经验证的 artifact，也不会把已完成任务改成虚假的执行失败。
+
+远程服务在 v1 中不能访问 task-local MCP server。Vendor plugin 不得绕过 Attempt
+identity、工作区 artifact 边界、timeout 处理或 manifest 脱敏。

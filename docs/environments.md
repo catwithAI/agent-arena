@@ -1,54 +1,52 @@
-# Writing an environment
+# 编写评测环境
 
-An environment is a directory under `envs/<name>/` that bundles a task, the
-tools an agent may need to complete it, and how to score the result.
+环境是 `envs/<name>/` 下的目录，包含任务、Agent 完成任务可能需要的工具，以及结果的
+评分方式。
 
-## Minimal layout
+## 最小目录结构
 
-```
+```text
 envs/<name>/
-├── meta.yaml         # required: type, pass_threshold, dimensions, entrypoints
-├── core.py           # tool implementations (@env_tool), or empty for pure-coding tasks
-├── scorer.py          # required: score(...) -> list[dict]
-├── mcp_server.py       # required only if core.py registers tools
-├── schema.sql          # optional: per-attempt sqlite schema, if tools need state
-└── tasks/*.json         # pre-defined tasks
+├── meta.yaml           # 必需：type、pass_threshold、dimensions、entrypoints
+├── core.py             # @env_tool 工具实现；纯编程任务可为空
+├── scorer.py           # 必需：score(...) -> list[dict]
+├── mcp_server.py       # core.py 注册工具时需要
+├── schema.sql          # 可选：工具状态使用的 Attempt 级 SQLite schema
+└── tasks/*.json        # 预定义任务
 ```
 
 ## `meta.yaml`
 
-Every environment must provide three display fields:
+每个环境必须提供三个展示字段：
 
-- `category`: one stable top-level capability category from the table below.
-- `test_focus`: one sentence describing the capability, constraints, and
-  scoring focus.
-- `description`: the task background, expected artifacts, and scoring method.
+- `category`：下表中的稳定顶层能力分类。
+- `test_focus`：一句话说明考察能力、约束和评分重点。
+- `description`：任务背景、预期产物和评分方法。
 
-Keep the top-level taxonomy small. Industry, discipline, and benchmark family
-belong in `type`, the description, or future tags.
+顶层分类应保持精简；行业、学科和 benchmark 系列应放进 `type`、描述或未来的 tag。
 
-| `category` | Display name | Scope |
+| `category` | 展示名称 | 范围 |
 |---|---|---|
-| `general-assistant` | General assistant | Search, file reading, multimodal understanding, open-ended problem solving |
-| `office-productivity` | Office and content | Spreadsheets, accounting materials, presentations, multi-source business work |
-| `real-skill` | Real-world skill | Deterministic chains backed by external business skills |
-| `complex-workflow` | Complex workflow | Multi-step tool orchestration, planning, artifacts, and recovery |
-| `coding` | Coding and algorithms | Implementation, optimization, static analysis, and hidden tests |
-| `agent-system` | Agent systems | Multi-turn memory, compaction, subagents, and observability |
-| `safety-hitl` | Safety and HITL | Confirmation and safe alternatives before high-consequence actions |
-| `baseline` | Baseline constraints | Basic tool use and explicit user-constraint compliance |
+| `general-assistant` | 通用助理 | 搜索、文件阅读、多模态理解、开放式问题求解 |
+| `office-productivity` | 办公与内容 | 表格、会计材料、演示文稿、多源业务工作 |
+| `real-skill` | 真实技能 | 由外部业务 skill 支撑的确定性执行链 |
+| `complex-workflow` | 复杂工作流 | 多步工具编排、规划、产物和恢复 |
+| `coding` | 编程与算法 | 实现、优化、静态分析和隐藏测试 |
+| `agent-system` | Agent 系统 | 多轮记忆、压缩、子 Agent 和可观测性 |
+| `safety-hitl` | 安全与 HITL | 高后果操作前的确认与安全替代方案 |
+| `baseline` | 基础约束 | 基本工具使用和显式用户约束遵循 |
 
 ```yaml
 name: my-env
-type: skill              # skill (has tools) | coding (submission-only)
+type: skill              # skill（有工具）| coding（仅提交产物）
 category: baseline
-description: One-line summary shown in the UI.
-test_focus: What this environment is actually testing.
-pass_threshold: 60        # score_total >= this -> attempt status "completed"
+description: 显示在 UI 中的一句话说明。
+test_focus: 该环境真正考察的内容。
+pass_threshold: 60       # score_total >= 此值时 Attempt 状态为 completed
 
 entrypoints:
   mcp:
-    enabled: true          # false for pure-coding envs with no tools
+    enabled: true        # 无工具的纯编程环境设为 false
     transport: stdio
     command: ["uv", "run", "--project", ".", "python", "envs/my-env/mcp_server.py"]
 
@@ -61,101 +59,88 @@ dimensions:
     description: ...
 ```
 
-Weights determine the aggregation of `scorer.py`'s output into
-`score_total` (weighted average, 0-100). If all weights are 0/missing, a
-simple average is used instead.
+权重决定如何把 `scorer.py` 的输出聚合为 `score_total`（0–100 的加权平均值）。
+所有权重均为 0 或缺失时使用简单平均值。
 
-`entrypoints` is the single source of truth for what tool capability an
-agent gets — the mere presence of `mcp_server.py` in the directory does not
-enable it. With `entrypoints.mcp.enabled: false` (or the key missing
-entirely), the dispatcher generates no MCP config, starts no capture tap,
-and adds no MCP-related text to the prompt, regardless of what files exist
-on disk. `command` must be the scenario's actual, complete launch command
-(argv list); the adapter runs it verbatim and never tries to guess or
-reconstruct it from `env_name`. It is resolved from the project root, and
-the MCP subprocess receives the real
-`data/attempts/<attempt_id>/skill_workspace` through `LANE_WORKSPACE`.
+`entrypoints` 是 Agent 工具能力的唯一事实源。目录中仅仅存在 `mcp_server.py` 并不会
+启用工具。`entrypoints.mcp.enabled: false` 或缺少该配置时，dispatcher 不生成 MCP
+配置、不启动 capture tap，也不向 Prompt 添加 MCP 文本。
 
-## Tools (`core.py`)
+`command` 必须是场景完整、真实的启动 argv；adapter 不会根据 `env_name` 猜测或重构。
+命令从项目根目录解析，MCP 子进程通过 `LANE_WORKSPACE` 获得真实的
+`data/attempts/<attempt_id>/skill_workspace`。
 
-Only needed if `type: skill`. Decorate plain functions with `@env_tool`;
-the wrapper handles trace-writing and timing automatically — your function
-just returns a JSON-serializable value.
+## 工具：`core.py`
+
+只有 `type: skill` 的环境需要工具。使用 `@env_tool` 装饰普通函数；wrapper 自动处理
+trace 写入和计时，函数只需返回可 JSON 序列化的值。
 
 ```python
 from lane.env_api import EnvContext, env_tool
 
 @env_tool(
     name="my_tool",
-    description="What this tool does, shown to the agent.",
-    parameters={"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]},
+    description="展示给 Agent 的工具说明。",
+    parameters={
+        "type": "object",
+        "properties": {"x": {"type": "string"}},
+        "required": ["x"],
+    },
 )
 def my_tool(ctx: EnvContext, x: str) -> dict:
-    # ctx.db is a sqlite3.Connection scoped to this attempt (schema.sql applied lazily)
-    # ctx.trace is handled automatically — you don't call it directly
+    # ctx.db 是当前 Attempt 独享的 sqlite3.Connection
+    # schema.sql 会在首次使用时幂等应用；trace 由 wrapper 自动处理
     return {"result": x.upper()}
 ```
 
-Persist state via `ctx.db`, backed by `schema.sql` in the same directory,
-applied idempotently on first use.
+持久状态通过 `ctx.db` 保存。
 
 ## `mcp_server.py`
 
-A thin MCP stdio wrapper that forwards each tool call to the attempt server
-over HTTP — copy `envs/order-desk/mcp_server.py` and adjust the tool
-signatures to match `core.py`. This file is required whenever `core.py`
-registers tools; any Agent whose declared capabilities include MCP talks to
-this wrapper through its own supported MCP dialect.
+这是一个轻量 MCP stdio wrapper，把每次工具调用通过 HTTP 转发到 Attempt server。
+可以复制 `envs/order-desk/mcp_server.py`，再按 `core.py` 调整工具签名。只要
+`core.py` 注册了工具，就必须提供此文件。声明支持 MCP 的 Agent 会通过各自支持的
+MCP 方言连接这个 wrapper。
 
-## Scorer (`scorer.py`)
+## Scorer：`scorer.py`
 
 ```python
 def score(*, attempt_id, task, env_db, trace, final_state) -> list[dict]:
-    # env_db: Path to this attempt's sqlite file (populated by your tools)
-    # trace: parsed trace.jsonl — every tool call, in order, with timing
-    # final_state: parsed final_state.json, if your env writes one
+    # env_db：当前 Attempt 的 SQLite 文件
+    # trace：按顺序解析的 trace.jsonl 工具调用
+    # final_state：环境写入 final_state.json 时的解析结果
     return [{"dimension": "task_completion", "value": 90, "detail": "..."}]
 ```
 
-For pure-coding environments (no tools), the scorer typically compiles and
-runs whatever the agent wrote into the attempt's working directory — see
-`envs/cpp-optimizer/scorer.py` for a batch-graded example (compile once,
-run against N hidden fixtures, normalize to 0-100).
+无工具的纯编程环境通常编译或运行 Agent 写入 Attempt 工作区的文件。批量评分示例见
+`envs/cpp-optimizer/scorer.py`：一次编译，在 N 个隐藏 fixture 上运行，再归一化为
+0–100 分。
 
-## Tasks
+## 任务
 
-`tasks/*.json`:
+`tasks/*.json`：
 
 ```json
 {
   "id": "my_task_001",
-  "prompt": "What the agent should do.",
+  "prompt": "Agent 需要完成的任务。",
   "context": {},
-  "constraints": { "any_key": "used_by_your_scorer" },
+  "constraints": {"any_key": "由 scorer 使用"},
   "timeout_seconds": 600
 }
 ```
 
-`context` is rendered into the agent's prompt (minus internal/uploaded-file
-bookkeeping, which adapters render separately); `constraints` is opaque to
-the framework and read directly by your `scorer.py`.
+`context` 会被渲染进 Agent Prompt（内部 bookkeeping 和上传文件信息除外，由 adapter
+单独处理）；`constraints` 对框架透明，由 `scorer.py` 直接读取。
 
-`timeout_seconds` is the time budget for the attempt. A positive value is
-both enforced by the adapter (`asyncio.wait_for`, hard-killing the CLI
-subprocess once it elapses) and told to the agent up front — every adapter
-injects the same notice text (`backend/adapters/base.time_budget_notice`)
-so the comparison across agents stays fair, nudging the agent to produce a
-submittable result quickly and spend any remaining time iterating. When
-creating a run via `POST /api/runs`, this field also accepts `null`, which
-means *unlimited*: no time-budget notice is injected and the adapter
-enforces no overall deadline. Omitting the field entirely keeps the
-existing default (1000s) rather than switching to unlimited, so callers
-that don't know about this option see no behavior change.
+正数 `timeout_seconds` 是 Attempt 时间预算：adapter 通过 `asyncio.wait_for` 强制执行，
+超时后终止 CLI 子进程，同时用
+`backend/adapters/base.time_budget_notice` 向所有 Agent 注入相同提示。通过
+`POST /api/runs` 创建运行时，该字段也可为 `null`，表示无限时：不注入预算提示，也不
+执行总超时。省略字段仍使用现有默认值 1000 秒。
 
-## Reference examples
+## 参考环境
 
-- `envs/order-desk/` — tool-using environment: mock catalog search + order
-  placement, budget-constraint scoring.
-- `envs/cpp-optimizer/` — pure-coding environment: no tools, agent submits
-  `solution.cpp`, scorer compiles and batch-grades it against fixed hidden
-  cases.
+- `envs/order-desk/`：工具型环境，在约束下搜索模拟图书目录并下单。
+- `envs/cpp-optimizer/`：纯编程环境，提交 `solution.cpp`，编译后在固定隐藏用例上
+  批量评分。
